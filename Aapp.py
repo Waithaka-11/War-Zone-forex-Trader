@@ -1,7 +1,5 @@
 import streamlit as st
 import pandas as pd
-import gspread
-from google.oauth2.service_account import Credentials
 from datetime import datetime
 
 # Page config
@@ -40,16 +38,6 @@ st.markdown("""
         font-weight: bold;
         color: #88C0D0;
     }
-    .delete-btn {
-        background-color: #BF616A;
-        color: white;
-        border: none;
-        padding: 0.3rem 0.6rem;
-        border-radius: 5px;
-        font-weight: bold;
-        font-size: 0.8rem;
-        margin-right: 0.5rem;
-    }
     .section-header {
         font-size: 1.8rem;
         color: #88C0D0;
@@ -65,12 +53,6 @@ st.markdown("""
     .negative-value {
         color: #BF616A;
         font-weight: bold;
-    }
-    .center-content {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        flex-direction: column;
     }
     .win-rate-bar {
         height: 20px;
@@ -93,71 +75,12 @@ st.markdown("""
         font-weight: bold;
         text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
     }
-    .performance-table {
-        width: 100%;
-        border-collapse: collapse;
-        margin: 15px 0;
-    }
-    .performance-table th, .performance-table td {
-        padding: 8px 12px;
-        text-align: left;
-        border-bottom: 1px solid #4C566A;
-    }
-    .performance-table th {
-        background-color: #3B4252;
-        color: #88C0D0;
-    }
-    .performance-table tr:hover {
-        background-color: #434C5E;
-    }
 </style>
 """, unsafe_allow_html=True)
-
-# Google Sheets integration setup
-def setup_google_sheets():
-    try:
-        # Create the connection to Google Sheets
-        scopes = [
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive"
-        ]
-        
-        # Load credentials from Streamlit secrets
-        if 'gcp_service_account' in st.secrets:
-            creds_dict = dict(st.secrets['gcp_service_account'])
-            creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-        else:
-            # For local development or without Google Sheets
-            st.warning("Google Sheets credentials not found. Using demo mode with local data storage.")
-            return None
-        
-        client = gspread.authorize(creds)
-        
-        # Try to open the spreadsheet or create a new one
-        try:
-            spreadsheet = client.open("WarZoneForexTrader")
-        except gspread.SpreadsheetNotFound:
-            # Create a new spreadsheet if it doesn't exist
-            spreadsheet = client.create("WarZoneForexTrader")
-            # Share with yourself (replace with your email)
-            spreadsheet.share('your-email@gmail.com', perm_type='user', role='writer')
-            
-            # Set up the worksheets
-            worksheet = spreadsheet.sheet1
-            worksheet.update_title("Trades")
-            headers = ["ID", "Date", "Trader", "Instrument", "Direction", "Entry", "Exit", "P/L", "R/R Ratio", "Outcome"]
-            worksheet.append_row(headers)
-            
-        return spreadsheet
-    except Exception as e:
-        st.warning(f"Google Sheets setup failed: {e}. Using demo mode.")
-        return None
 
 # Initialize session state
 if 'trades' not in st.session_state:
     st.session_state.trades = []
-if 'spreadsheet' not in st.session_state:
-    st.session_state.spreadsheet = setup_google_sheets()
 if 'initialized' not in st.session_state:
     st.session_state.initialized = False
 
@@ -214,82 +137,16 @@ def get_sample_data():
         }
     ]
 
-# Load data from Google Sheets or use sample data
-def load_data_from_sheets():
-    if st.session_state.spreadsheet:
-        try:
-            worksheet = st.session_state.spreadsheet.worksheet("Trades")
-            data = worksheet.get_all_records()
-            
-            # Convert to proper data types
-            for trade in data:
-                trade['ID'] = int(trade['ID']) if 'ID' in trade and trade['ID'] else 0
-                trade['P/L'] = float(trade['P/L']) if 'P/L' in trade and trade['P/L'] else 0.0
-                trade['R/R Ratio'] = float(trade['R/R Ratio']) if 'R/R Ratio' in trade and trade['R/R Ratio'] else 0.0
-                trade['Entry'] = float(trade['Entry']) if 'Entry' in trade and trade['Entry'] else 0.0
-                trade['Exit'] = float(trade['Exit']) if 'Exit' in trade and trade['Exit'] else 0.0
-            
-            return data
-        except Exception as e:
-            st.warning(f"Error loading from Google Sheets: {e}. Using sample data.")
-            return get_sample_data()
-    else:
-        return get_sample_data()
-
-# Save data to Google Sheets or just update session state
-def save_data_to_sheets():
-    if st.session_state.spreadsheet:
-        try:
-            worksheet = st.session_state.spreadsheet.worksheet("Trades")
-            
-            # Clear existing data (except headers)
-            worksheet.clear()
-            headers = ["ID", "Date", "Trader", "Instrument", "Direction", "Entry", "Exit", "P/L", "R/R Ratio", "Outcome"]
-            worksheet.append_row(headers)
-            
-            # Add all trades
-            for trade in st.session_state.trades:
-                row = [
-                    trade.get('id', ''),
-                    trade.get('date', ''),
-                    trade.get('trader', ''),
-                    trade.get('instrument', ''),
-                    trade.get('direction', ''),
-                    trade.get('entry_price', ''),
-                    trade.get('exit_price', ''),
-                    trade.get('profit_loss', ''),
-                    trade.get('rr_ratio', ''),
-                    trade.get('outcome', '')
-                ]
-                worksheet.append_row(row)
-                
-            return True
-        except Exception as e:
-            st.warning(f"Error saving to Google Sheets: {e}. Data stored locally only.")
-            return False
-    return True  # Return True for local storage
+# Load data
+def load_data():
+    return get_sample_data()
 
 # Load data if not initialized
 if not st.session_state.initialized:
     with st.spinner("Loading data..."):
-        data = load_data_from_sheets()
+        data = load_data()
         if data:
-            # Convert to our format
-            converted_data = []
-            for item in data:
-                converted_data.append({
-                    'id': item.get('ID', ''),
-                    'date': item.get('Date', ''),
-                    'trader': item.get('Trader', ''),
-                    'instrument': item.get('Instrument', ''),
-                    'direction': item.get('Direction', ''),
-                    'entry_price': item.get('Entry', ''),
-                    'exit_price': item.get('Exit', ''),
-                    'profit_loss': item.get('P/L', ''),
-                    'rr_ratio': item.get('R/R Ratio', ''),
-                    'outcome': item.get('Outcome', '')
-                })
-            st.session_state.trades = converted_data
+            st.session_state.trades = data
         st.session_state.initialized = True
 
 # App title
@@ -298,8 +155,7 @@ st.markdown('<h1 class="main-header">War Zone Forex Trader Dashboard</h1>', unsa
 # Function to delete a trade
 def delete_trade(trade_id):
     st.session_state.trades = [trade for trade in st.session_state.trades if trade.get('id') != trade_id]
-    if save_data_to_sheets():
-        st.success("Trade deleted successfully!")
+    st.success("Trade deleted successfully!")
     st.rerun()
 
 # Main layout
@@ -314,7 +170,7 @@ with col1:
         for i, trade in enumerate(st.session_state.trades):
             cols = st.columns([0.5, 1, 1, 1, 1, 1, 1, 1, 1, 1])
             with cols[0]:
-                # Delete button with white text
+                # Delete button
                 if st.button("🗑️", key=f"delete_{trade.get('id', i)}", help="Delete trade"):
                     delete_trade(trade.get('id', i))
             with cols[1]:
@@ -331,11 +187,13 @@ with col1:
                 st.write(trade.get('exit_price', 'N/A'))
             with cols[7]:
                 pl = trade.get('profit_loss', 0)
-                if pl is None or pl < 0:
-                    pl_class = "negative-value"
-                else:
-                    pl_class = "positive-value"
-                st.markdown(f'<span class="{pl_class}">{pl}</span>', unsafe_allow_html=True)
+                # FIXED: Proper handling of None values
+                try:
+                    pl_value = float(pl) if pl is not None else 0
+                    pl_class = "positive-value" if pl_value >= 0 else "negative-value"
+                    st.markdown(f'<span class="{pl_class}">{pl_value}</span>', unsafe_allow_html=True)
+                except (TypeError, ValueError):
+                    st.markdown(f'<span class="negative-value">N/A</span>', unsafe_allow_html=True)
             with cols[8]:
                 st.write(trade.get('rr_ratio', 'N/A'))
             with cols[9]:
@@ -481,34 +339,12 @@ with st.form("add_trade_form"):
         }
         
         st.session_state.trades.append(new_trade)
-        if save_data_to_sheets():
-            st.success("Trade added successfully!")
+        st.success("Trade added successfully!")
         st.rerun()
 
-# Add a refresh button
-if st.button("Refresh Data"):
-    with st.spinner("Refreshing data..."):
-        data = load_data_from_sheets()
-        if data:
-            # Convert to our format
-            converted_data = []
-            for item in data:
-                converted_data.append({
-                    'id': item.get('ID', ''),
-                    'date': item.get('Date', ''),
-                    'trader': item.get('Trader', ''),
-                    'instrument': item.get('Instrument', ''),
-                    'direction': item.get('Direction', ''),
-                    'entry_price': item.get('Entry', ''),
-                    'exit_price': item.get('Exit', ''),
-                    'profit_loss': item.get('P/L', ''),
-                    'rr_ratio': item.get('R/R Ratio', ''),
-                    'outcome': item.get('Outcome', '')
-                })
-            st.session_state.trades = converted_data
-            st.success("Data refreshed successfully!")
-
-
-
-
-
+# Information about Google Sheets issue
+st.markdown("---")
+st.warning("""
+**Note:** Google Sheets integration is currently disabled due to storage quota limitations. 
+All data is stored locally in this session and will be lost when you refresh the page.
+""")
