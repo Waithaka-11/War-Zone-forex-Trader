@@ -331,12 +331,10 @@ with col1:
                 st.write(trade.get('exit_price', 'N/A'))
             with cols[7]:
                 pl = trade.get('profit_loss', 0)
-                if pl is None:
+                if pl is None or pl < 0:
                     pl_class = "negative-value"
-                elif pl >= 0:
-                    pl_class = "positive-value"
                 else:
-                    pl_class = "negative-value"
+                    pl_class = "positive-value"
                 st.markdown(f'<span class="{pl_class}">{pl}</span>', unsafe_allow_html=True)
             with cols[8]:
                 st.write(trade.get('rr_ratio', 'N/A'))
@@ -509,6 +507,7 @@ if st.button("Refresh Data"):
                 })
             st.session_state.trades = converted_data
             st.success("Data refreshed successfully!")
+
 
 
 
