@@ -230,6 +230,20 @@ st.markdown("""
     .stSelectbox label, .stTextInput label, .stDateInput label, .stNumberInput label {
         color: #000000;
     }
+    
+    .delete-btn {
+        background-color: #e74c3c;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        padding: 4px 8px;
+        cursor: pointer;
+        font-size: 12px;
+    }
+    
+    .delete-btn:hover {
+        background-color: #c0392b;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -241,6 +255,15 @@ st.markdown("""
     </div>
 </div>
 """, unsafe_allow_html=True)
+
+# Forex instrument options
+FOREX_INSTRUMENTS = [
+    "XAUUSD", "USOIL", "US30", "US100", "US500", "BTCUSD", 
+    "USDJPY", "EURUSD", "GBPUSD", "AUDUSD", "USDCHF", "NZDUSD",
+    "EURGBP", "EURJPY", "GBPJPY", "AUDJPY", "CADJPY", "CHFJPY",
+    "EURCAD", "EURAUD", "GBPCAD", "GBPAUD", "AUDCAD", "AUDNZD",
+    "NZDCAD", "NZDJPY", "USDCNH", "USDSGD", "USDHKD", "USDTRY"
+]
 
 # Google Sheets integration
 def connect_to_google_sheets():
@@ -297,7 +320,8 @@ def load_trades():
                     'entry': float(record['Entry']),
                     'sl': float(record['SL']),
                     'target': float(record['Target']),
-                    'outcome': record['Outcome']
+                    'outcome': record['Outcome'],
+                    'id': record.get('Timestamp', '')  # Use timestamp as ID
                 })
             return trades
         except Exception as e:
@@ -309,19 +333,23 @@ def load_trades():
             st.session_state.trades = [
                 {
                     'date': '2023-10-08', 'trader': 'Waithaka', 'instrument': 'XAUUSD',
-                    'entry': 1820.50, 'sl': 1815.00, 'target': 1830.00, 'outcome': 'Target Hit'
+                    'entry': 1820.50, 'sl': 1815.00, 'target': 1830.00, 'outcome': 'Target Hit',
+                    'id': '1'
                 },
                 {
                     'date': '2023-10-07', 'trader': 'Wallace', 'instrument': 'USOIL',
-                    'entry': 89.30, 'sl': 88.50, 'target': 91.00, 'outcome': 'SL Hit'
+                    'entry': 89.30, 'sl': 88.50, 'target': 91.00, 'outcome': 'SL Hit',
+                    'id': '2'
                 },
                 {
                     'date': '2023-10-06', 'trader': 'Max', 'instrument': 'BTCUSD',
-                    'entry': 27450.00, 'sl': 27200.00, 'target': 27800.00, 'outcome': 'Target Hit'
+                    'entry': 27450.00, 'sl': 27200.00, 'target': 27800.00, 'outcome': 'Target Hit',
+                    'id': '3'
                 },
                 {
                     'date': '2023-10-05', 'trader': 'Waithaka', 'instrument': 'EURUSD',
-                    'entry': 1.06250, 'sl': 1.06000, 'target': 1.06700, 'outcome': 'Target Hit'
+                    'entry': 1.06250, 'sl': 1.06000, 'target': 1.06700, 'outcome': 'Target Hit',
+                    'id': '4'
                 }
             ]
         return st.session_state.trades
@@ -333,6 +361,7 @@ def save_trade(trade):
     reward = abs(trade['target'] - trade['entry'])
     rr_ratio = round(reward / risk, 2) if risk > 0 else 0
     result = 'Win' if trade['outcome'] == 'Target Hit' else 'Loss'
+    timestamp = datetime.now().isoformat()
     
     if worksheet:
         try:
@@ -349,7 +378,7 @@ def save_trade(trade):
                 reward,
                 rr_ratio,
                 result,
-                datetime.now().isoformat()
+                timestamp
             ])
             return True
         except Exception as e:
@@ -359,7 +388,28 @@ def save_trade(trade):
         # Save to session state if Google Sheets is not available
         if 'trades' not in st.session_state:
             st.session_state.trades = []
+        trade['id'] = timestamp
         st.session_state.trades.append(trade)
+        return True
+
+# Delete trade from Google Sheets or session state
+def delete_trade(trade_id):
+    if worksheet:
+        try:
+            # Find the row with the matching timestamp
+            records = worksheet.get_all_records()
+            for i, record in enumerate(records, start=2):  # Start from row 2 (header is row 1)
+                if record.get('Timestamp') == trade_id:
+                    worksheet.delete_rows(i)
+                    return True
+            return False
+        except Exception as e:
+            st.error(f"Error deleting trade from Google Sheets: {e}")
+            return False
+    else:
+        # Delete from session state if Google Sheets is not available
+        if 'trades' in st.session_state:
+            st.session_state.trades = [trade for trade in st.session_state.trades if trade['id'] != trade_id]
         return True
 
 # Load trades
@@ -407,18 +457,7 @@ with st.expander("Add New Trade", expanded=True):
     with col1:
         trader = st.selectbox("Trader", ["", "Waithaka", "Wallace", "Max"], key="trader_input")
     with col2:
-        instrument = st.text_input("Instrument", key="instrument_input")
-        st.markdown("""
-        <div class="mt-2">
-            <small style="color: #000000;">Suggestions:</small>
-            <div>
-                <span class="suggestion-pill" onclick="document.querySelector('input[aria-label=\\'Instrument\\']').value='XAUUSD'">XAUUSD</span>
-                <span class="suggestion-pill" onclick="document.querySelector('input[aria-label=\\'Instrument\\']').value='USOIL'">USOIL</span>
-                <span class="suggestion-pill" onclick="document.querySelector('input[aria-label=\\'Instrument\\']').value='BTCUSD'">BTCUSD</span>
-                <span class="suggestion-pill" onclick="document.querySelector('input[aria-label=\\'Instrument\\']').value='USTECH'">USTECH</span>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        instrument = st.selectbox("Instrument", [""] + FOREX_INSTRUMENTS, key="instrument_input")
     with col3:
         trade_date = st.date_input("Date", value=date.today(), key="date_input")
     with col4:
@@ -509,24 +548,35 @@ with col1:
             'Reward': f"{metrics['reward']:.5f}",
             'R/R Ratio': metrics['rr_ratio'],
             'Outcome': trade['outcome'],
-            'Result': metrics['result']
+            'Result': metrics['result'],
+            'Actions': trade['id']
         }
         table_data.append(row)
     
-    # Display table with custom styling
-    df = pd.DataFrame(table_data)
-    st.dataframe(
-        df,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Result": st.column_config.TextColumn(
-                "Result",
-                help="Trade result",
-                width="small"
-            )
-        }
-    )
+    # Display table with custom styling and delete buttons
+    if table_data:
+        df = pd.DataFrame(table_data)
+        
+        # Create a copy of the dataframe without the ID column for display
+        display_df = df.drop(columns=['Actions'])
+        
+        # Display the table
+        st.dataframe(
+            display_df,
+            use_container_width=True,
+            hide_index=True
+        )
+        
+        # Add delete buttons for each row
+        for i, trade_id in enumerate(df['Actions']):
+            col1, col2, col3 = st.columns([6, 1, 1])
+            with col2:
+                if st.button("Delete", key=f"delete_{trade_id}"):
+                    if delete_trade(trade_id):
+                        st.success("Trade deleted successfully!")
+                        st.rerun()
+    else:
+        st.info("No trades recorded yet.")
 
 with col2:
     st.markdown('<h3 class="section-title">Performance Metrics</h3>', unsafe_allow_html=True)
@@ -638,52 +688,3 @@ st.markdown("""
 <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
 """, unsafe_allow_html=True)
 
-# Setup instructions
-with st.expander("Google Sheets Setup Instructions"):
-    st.markdown("""
-    ## How to Set Up Google Sheets Integration
-    
-    1. **Create a Google Cloud Project**:
-       - Go to the [Google Cloud Console](https://console.cloud.google.com/)
-       - Create a new project or select an existing one
-       
-    2. **Enable the Google Sheets API**:
-       - In your project, navigate to "APIs & Services" > "Library"
-       - Search for "Google Sheets API" and enable it
-       
-    3. **Create a Service Account**:
-       - Go to "APIs & Services" > "Credentials"
-       - Click "Create Credentials" > "Service Account"
-       - Give it a name (e.g., "forex-dashboard") and create
-       
-    4. **Generate Credentials**:
-       - Click on the service account you just created
-       - Go to the "Keys" tab
-       - Click "Add Key" > "Create New Key"
-       - Select JSON format and download the key file
-       
-    5. **Configure Streamlit Secrets**:
-       - In your app's directory, create a `.streamlit` folder
-       - Create a `secrets.toml` file inside it
-       - Copy the contents of your downloaded JSON key file into `secrets.toml` like this:
-       
-    ```toml
-    [gcp_service_account]
-    type = "service_account"
-    project_id = "your-project-id"
-    private_key_id = "your-private-key-id"
-    private_key = "-----BEGIN PRIVATE KEY-----\\nyour-private-key\\n-----END PRIVATE KEY-----\\n"
-    client_email = "your-service-account-email@your-project-id.iam.gserviceaccount.com"
-    client_id = "your-client-id"
-    auth_uri = "https://accounts.google.com/o/oauth2/auth"
-    token_uri = "https://oauth2.googleapis.com/token"
-    auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
-    client_x509_cert_url = "https://www.googleapis.com/robot/v1/metadata/x509/your-service-account-email%40your-project-id.iam.gserviceaccount.com"
-    ```
-    
-    6. **Share your Google Sheet**:
-       - Create a Google Sheet named "Forex Trading Dashboard"
-       - Share it with your service account email with editor permissions
-       
-    After completing these steps, your app will automatically save all trades to Google Sheets!
-    """)
