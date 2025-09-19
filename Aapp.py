@@ -12,7 +12,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Custom CSS to match the exact UI description
+# Custom CSS - IMPROVED VERSION
 st.markdown("""
 <style>
     /* Main styles */
@@ -73,6 +73,115 @@ st.markdown("""
         padding: 12px 20px;
         font-weight: 600;
         font-size: 18px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .dropdown-arrow {
+        cursor: pointer;
+        transition: transform 0.3s;
+    }
+    
+    /* IMPROVED FORM LAYOUT */
+    .form-container {
+        padding: 20px;
+    }
+    
+    .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr 1fr;
+        gap: 20px;
+        margin-bottom: 20px;
+        align-items: end;
+    }
+    
+    .form-row:last-child {
+        margin-bottom: 0;
+    }
+    
+    .form-group {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .form-label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 600;
+        color: #2c3e50;
+        font-size: 14px;
+    }
+    
+    .form-select, .form-input {
+        width: 100%;
+        padding: 12px;
+        border: 1px solid #ced4da;
+        border-radius: 6px;
+        font-size: 14px;
+        background-color: white;
+        transition: border-color 0.3s, box-shadow 0.3s;
+    }
+    
+    .form-select:focus, .form-input:focus {
+        outline: none;
+        border-color: #3498db;
+        box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+    }
+    
+    /* Suggestion pills - IMPROVED */
+    .suggestions-container {
+        position: relative;
+    }
+    
+    .suggestion-pills {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 8px;
+    }
+    
+    .suggestion-pill {
+        background-color: #3498db;
+        color: white;
+        padding: 4px 10px;
+        border-radius: 15px;
+        font-size: 12px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+        font-weight: 500;
+    }
+    
+    .suggestion-pill:hover {
+        background-color: #2980b9;
+    }
+    
+    /* IMPROVED BUTTON */
+    .btn-add-trade {
+        background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 6px;
+        font-weight: 600;
+        cursor: pointer;
+        font-size: 14px;
+        transition: all 0.3s;
+        box-shadow: 0 2px 4px rgba(52, 152, 219, 0.3);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+    }
+    
+    .btn-add-trade:hover {
+        background: linear-gradient(135deg, #2980b9 0%, #1c5a85 100%);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(52, 152, 219, 0.4);
+    }
+    
+    .btn-add-trade:active {
+        transform: translateY(0);
     }
     
     /* Table styles */
@@ -186,64 +295,6 @@ st.markdown("""
         margin-bottom: 10px;
     }
     
-    /* Form styles */
-    .form-grid {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 15px;
-        padding: 20px;
-    }
-    
-    .form-group {
-        margin-bottom: 15px;
-    }
-    
-    .form-label {
-        display: block;
-        margin-bottom: 5px;
-        font-weight: 600;
-        color: #2c3e50;
-    }
-    
-    .form-select, .form-input {
-        width: 100%;
-        padding: 8px 12px;
-        border: 1px solid #ced4da;
-        border-radius: 5px;
-        font-size: 14px;
-    }
-    
-    .btn-primary {
-        background-color: #3498db;
-        color: white;
-        border: none;
-        padding: 10px 20px;
-        border-radius: 5px;
-        font-weight: 600;
-        cursor: pointer;
-    }
-    
-    .btn-primary:hover {
-        background-color: #2980b9;
-    }
-    
-    /* Suggestion pills */
-    .suggestion-pills {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 5px;
-        margin-top: 5px;
-    }
-    
-    .suggestion-pill {
-        background-color: #e3f2fd;
-        color: #1976d2;
-        padding: 4px 10px;
-        border-radius: 15px;
-        font-size: 12px;
-        cursor: pointer;
-    }
-    
     /* Delete button */
     .delete-btn {
         background: none;
@@ -251,6 +302,13 @@ st.markdown("""
         color: #dc3545;
         cursor: pointer;
         font-size: 16px;
+        padding: 4px;
+        border-radius: 4px;
+        transition: background-color 0.3s;
+    }
+    
+    .delete-btn:hover {
+        background-color: rgba(220, 53, 69, 0.1);
     }
     
     /* Chart placeholder */
@@ -296,6 +354,23 @@ st.markdown("""
     .good { background-color: #28a745; }
     .medium { background-color: #ffc107; }
     .poor { background-color: #dc3545; }
+    
+    /* Responsive design */
+    @media (max-width: 768px) {
+        .form-row {
+            grid-template-columns: 1fr;
+            gap: 15px;
+        }
+        
+        .header-title {
+            font-size: 18px;
+        }
+        
+        .nav-buttons {
+            flex-direction: column;
+            gap: 8px;
+        }
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -343,300 +418,86 @@ st.markdown("""
 # Main container
 st.markdown('<div style="max-width: 1200px; margin: 0 auto; padding: 0 20px;">', unsafe_allow_html=True)
 
-# Add New Trade Section
+# IMPROVED Add New Trade Section
 st.markdown("""
 <div class="card">
     <div class="card-header">
-        <i class="fas fa-plus-circle me-2"></i>Add New Trade
-    </div>
-    <div class="form-grid">
-        <div class="form-group">
-            <label class="form-label">Trader</label>
-            <select class="form-select">
-                <option>Select Trader</option>
-                <option>Waithaka</option>
-                <option>Wallace</option>
-                <option>Max</option>
-            </select>
+        <div>
+            <i class="fas fa-plus-circle" style="margin-right: 8px;"></i>Add New Trade
         </div>
-        
-        <div class="form-group">
-            <label class="form-label">Instrument</label>
-            <input type="text" class="form-input" placeholder="Enter instrument">
-            <div class="suggestion-pills">
-                <span class="suggestion-pill">XAUUSD</span>
-                <span class="suggestion-pill">USOIL</span>
-                <span class="suggestion-pill">BTCUSD</span>
-                <span class="suggestion-pill">USTECH</span>
+        <span class="dropdown-arrow">▼</span>
+    </div>
+    <div class="form-container">
+        <!-- First Row: Trader, Instrument, Date, Outcome -->
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Trader</label>
+                <select class="form-select">
+                    <option>Select Trader</option>
+                    <option>Waithaka</option>
+                    <option>Wallace</option>
+                    <option>Max</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Instrument</label>
+                <div class="suggestions-container">
+                    <input type="text" class="form-input" placeholder="Enter Instrument">
+                    <div class="suggestion-pills">
+                        <span class="suggestion-pill">XAUUSD</span>
+                        <span class="suggestion-pill">USDOIL</span>
+                        <span class="suggestion-pill">BTCUSD</span>
+                        <span class="suggestion-pill">USTECH</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Date</label>
+                <input type="date" class="form-input" value="2025-09-19">
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Outcome</label>
+                <select class="form-select">
+                    <option>Select Outcome</option>
+                    <option>Target Hit</option>
+                    <option>SL Hit</option>
+                </select>
             </div>
         </div>
         
-        <div class="form-group">
-            <label class="form-label">Date</label>
-            <input type="text" class="form-input" value="09/19/2025">
-        </div>
-        
-        <div class="form-group">
-            <label class="form-label">Outcome</label>
-            <select class="form-select">
-                <option>Select Outcome</option>
-                <option>Target Hit</option>
-                <option>SL Hit</option>
-            </select>
-        </div>
-        
-        <div class="form-group">
-            <label class="form-label">Entry Price</label>
-            <input type="number" class="form-input" placeholder="0.00" step="0.01">
-        </div>
-        
-        <div class="form-group">
-            <label class="form-label">Stop Loss (SL)</label>
-            <input type="number" class="form-input" placeholder="0.00" step="0.01">
-        </div>
-        
-        <div class="form-group">
-            <label class="form-label">Target Price</label>
-            <input type="number" class="form-input" placeholder="0.00" step="0.01">
-        </div>
-        
-        <div class="form-group" style="display: flex; align-items: flex-end;">
-            <button class="btn-primary"><i class="fas fa-plus" style="margin-right: 5px;"></i>Add Trade</button>
+        <!-- Second Row: Entry Price, Stop Loss, Target Price, Add Button -->
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Entry Price</label>
+                <input type="number" class="form-input" placeholder="0.00" step="0.01">
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Stop Loss (SL)</label>
+                <input type="number" class="form-input" placeholder="0.00" step="0.01">
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Target Price</label>
+                <input type="number" class="form-input" placeholder="0.00" step="0.01">
+            </div>
+            
+            <div class="form-group">
+                <button class="btn-add-trade">
+                    <i class="fas fa-plus"></i>
+                    Add Trade
+                </button>
+            </div>
         </div>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-# Main Content Area
-col1, col2 = st.columns([2, 1])
-
-with col1:
-    # Trader Performance Rankings
-    st.markdown("""
-    <div class="card">
-        <div class="card-header">
-            <i class="fas fa-trophy me-2"></i>Trader Performance Rankings
-        </div>
-        <div>
-            <div class="trader-rank">
-                <div class="rank-badge rank-1">1</div>
-                <div style="flex: 1;">
-                    <div style="font-weight: 600; color: #2c3e50;">Waithaka</div>
-                    <div style="font-size: 14px; color: #6c757d;">72.5% win rate</div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: 72.5%;"></div>
-                    </div>
-                    <div style="font-size: 12px; color: #6c757d;">Wins: 13 | Losses: 5</div>
-                </div>
-            </div>
-            
-            <div class="trader-rank">
-                <div class="rank-badge rank-2">2</div>
-                <div style="flex: 1;">
-                    <div style="font-weight: 600; color: #2c3e50;">Max</div>
-                    <div style="font-size: 14px; color: #6c757d;">65.3% win rate</div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: 65.3%;"></div>
-                    </div>
-                    <div style="font-size: 12px; color: #6c757d;">Wins: 10 | Losses: 5</div>
-                </div>
-            </div>
-            
-            <div class="trader-rank">
-                <div class="rank-badge rank-3">3</div>
-                <div style="flex: 1;">
-                    <div style="font-weight: 600; color: #2c3e50;">Wallace</div>
-                    <div style="font-size: 14px; color: #6c757d;">58.7% win rate</div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: 58.7%;"></div>
-                    </div>
-                    <div style="font-size: 12px; color: #6c757d;">Wins: 9 | Losses: 7</div>
-                </div>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # Trading History Table
-    st.markdown("""
-    <div class="card">
-        <div class="card-header">
-            <i class="fas fa-table me-2"></i>Trading History
-        </div>
-        <div style="padding: 20px;">
-            <table class="trading-table">
-                <thead>
-                    <tr>
-                        <th>Instrument</th>
-                        <th>Entry</th>
-                        <th>SL</th>
-                        <th>Target</th>
-                        <th>Risk</th>
-                        <th>Reward</th>
-                        <th>R/R Ratio</th>
-                        <th>Outcome</th>
-                        <th>Result</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>XAUUSD</td>
-                        <td>1820.50</td>
-                        <td>1815.00</td>
-                        <td>1830.00</td>
-                        <td>5.50</td>
-                        <td>9.50</td>
-                        <td>1.73</td>
-                        <td>Target Hit</td>
-                        <td><span class="badge-win">Win</span></td>
-                        <td><button class="delete-btn"><i class="fas fa-trash"></i></button></td>
-                    </tr>
-                    <tr>
-                        <td>USOIL</td>
-                        <td>89.30</td>
-                        <td>88.50</td>
-                        <td>91.00</td>
-                        <td>0.80</td>
-                        <td>1.70</td>
-                        <td>2.13</td>
-                        <td>SL Hit</td>
-                        <td><span class="badge-loss">Loss</span></td>
-                        <td><button class="delete-btn"><i class="fas fa-trash"></i></button></td>
-                    </tr>
-                    <tr>
-                        <td>BTCUSD</td>
-                        <td>27450.00</td>
-                        <td>27200.00</td>
-                        <td>27800.00</td>
-                        <td>250.00</td>
-                        <td>350.00</td>
-                        <td>1.40</td>
-                        <td>Target Hit</td>
-                        <td><span class="badge-win">Win</span></td>
-                        <td><button class="delete-btn"><i class="fas fa-trash"></i></button></td>
-                    </tr>
-                    <tr>
-                        <td>EURUSD</td>
-                        <td>1.06250</td>
-                        <td>1.06000</td>
-                        <td>1.06700</td>
-                        <td>0.00250</td>
-                        <td>0.00450</td>
-                        <td>1.80</td>
-                        <td>Target Hit</td>
-                        <td><span class="badge-win">Win</span></td>
-                        <td><button class="delete-btn"><i class="fas fa-trash"></i></button></td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with col2:
-    # Performance Metrics - Win Rate Distribution
-    st.markdown("""
-    <div class="card">
-        <div class="card-header">
-            <i class="fas fa-chart-pie me-2"></i>Overall Win Rate Distribution
-        </div>
-        <div style="padding: 20px;">
-            <div class="chart-placeholder">
-                Donut Chart: Waithaka (72.5%), Max (65.3%), Wallace (56.7%)
-            </div>
-            <div style="margin-top: 15px;">
-                <div style="display: flex; align-items: center; margin-bottom: 8px;">
-                    <div style="width: 12px; height: 12px; background-color: #ff6384; border-radius: 2px; margin-right: 8px;"></div>
-                    <span>Waithaka (72.5%)</span>
-                </div>
-                <div style="display: flex; align-items: center; margin-bottom: 8px;">
-                    <div style="width: 12px; height: 12px; background-color: #36a2eb; border-radius: 2px; margin-right: 8px;"></div>
-                    <span>Max (65.3%)</span>
-                </div>
-                <div style="display: flex; align-items: center;">
-                    <div style="width: 12px; height: 12px; background-color: #ffcd56; border-radius: 2px; margin-right: 8px;"></div>
-                    <span>Wallace (56.7%)</span>
-                </div>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # Trader of the Month
-    st.markdown("""
-    <div class="card">
-        <div class="card-header">
-            <i class="fas fa-award me-2"></i>Trader of the Month
-        </div>
-        <div class="trader-of-month">
-            <div class="trophy">🏆</div>
-            <h3 style="color: #2c3e50; margin-bottom: 5px;">Waithaka</h3>
-            <p style="color: #6c757d; margin-bottom: 15px;">Best performance with 72.5% win rate</p>
-            <div class="stats-box positive">
-                <h6>WIN RATE THIS MONTH</h6>
-                <h3>72.5%</h3>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # Instrument Performance by Trader
-    st.markdown("""
-    <div class="card">
-        <div class="card-header">
-            <i class="fas fa-chart-bar me-2"></i>Instrument Performance by Trader
-        </div>
-        <div style="padding: 20px;">
-            <div class="performance-grid">
-                <div class="performance-cell">
-                    <div style="font-size: 12px; color: #6c757d;">XAUUSD</div>
-                    <div style="font-weight: 600;">Waithaka</div>
-                    <div class="performance-bar">
-                        <div class="bar-fill good" style="width: 85%;"></div>
-                    </div>
-                </div>
-                <div class="performance-cell">
-                    <div style="font-size: 12px; color: #6c757d;">USOIL</div>
-                    <div style="font-weight: 600;">Wallace</div>
-                    <div class="performance-bar">
-                        <div class="bar-fill medium" style="width: 60%;"></div>
-                    </div>
-                </div>
-                <div class="performance-cell">
-                    <div style="font-size: 12px; color: #6c757d;">BTCUSD</div>
-                    <div style="font-weight: 600;">Max</div>
-                    <div class="performance-bar">
-                        <div class="bar-fill good" style="width: 78%;"></div>
-                    </div>
-                </div>
-                <div class="performance-cell">
-                    <div style="font-size: 12px; color: #6c757d;">USTECH</div>
-                    <div style="font-weight: 600;">Waithaka</div>
-                    <div class="performance-bar">
-                        <div class="bar-fill poor" style="width: 40%;"></div>
-                    </div>
-                </div>
-                <div class="performance-cell">
-                    <div style="font-size: 12px; color: #6c757d;">EURUSD</div>
-                    <div style="font-weight: 600;">Max</div>
-                    <div class="performance-bar">
-                        <div class="bar-fill good" style="width: 82%;"></div>
-                    </div>
-                </div>
-                <div class="performance-cell">
-                    <div style="font-size: 12px; color: #6c757d;">GBPUSD</div>
-                    <div style="font-weight: 600;">Wallace</div>
-                    <div class="performance-bar">
-                        <div class="bar-fill medium" style="width: 55%;"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-st.markdown('</div>', unsafe_allow_html=True)
+# Rest of your existing code continues here...
+# (Main Content Area with columns, trader rankings, trading history table, etc.)
 
 # Add Font Awesome
 st.markdown('<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">', unsafe_allow_html=True)
