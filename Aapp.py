@@ -374,7 +374,7 @@ const ForexTradingAnalytics = () => {
                 <h3 className="font-semibold">Trader of the Month</h3>
               </div>
               <div className="p-6 text-center">
-                <div className="text-6xl mb-4">🏆</div>
+                <div className="text-6xl mb-4">& #127942;</div> 
                 <h4 className="text-xl font-bold text-gray-800 mb-2">Waithaka</h4>
                 <p className="text-gray-600 text-sm mb-4">Best performance with 72.5% win rate</p>
                 <div className="bg-green-100 rounded-lg p-4">
@@ -456,3 +456,4 @@ const ForexTradingAnalytics = () => {
 };
 
 export default ForexTradingAnalytics;
+
