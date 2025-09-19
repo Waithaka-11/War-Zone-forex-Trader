@@ -665,4 +665,87 @@ with col_sidebar:
         </div>
         <div class="trader-month">
             <div class="trophy-icon">🏆</div>
-            <h4
+            <h4 style="font-size: 1.25rem; font-weight: bold; color: #1f2937; margin: 0 0 0.5rem 0;">Waithaka</h4>
+            <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">Best performance with 72.5% win rate</p>
+            <div class="month-card">
+                <div style="font-size: 0.75rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em;">WIN RATE THIS MONTH</div>
+                <div style="font-size: 2rem; font-weight: bold; color: #15803d;">72.5%</div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Instrument Performance by Trader
+    st.markdown("""
+    <div class="trade-card">
+        <div class="card-header">
+            <div style="display: flex; align-items: center;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.5rem;">
+                    <line x1="12" y1="20" x2="12" y2="10"></line>
+                    <line x1="18" y1="20" x2="18" y2="4"></line>
+                    <line x1="6" y1="20" x2="6" y2="16"></line>
+                </svg>
+                <h3 style="font-weight: 600; margin: 0;">Instrument Performance by Trader</h3>
+            </div>
+        </div>
+        <div style="padding: 1rem;">
+            <div class="perf-grid">
+                <!-- Header -->
+                <div class="perf-header">Instrument</div>
+                <div class="perf-header">Waithaka</div>
+                <div class="perf-header">Wallace</div>
+                <div class="perf-header">Max</div>
+                
+                <!-- XAUUSD -->
+                <div class="perf-cell">XAUUSD</div>
+                <div style="padding: 0.5rem; display: flex; align-items: center; justify-content: center;">
+                    <div class="perf-badge perf-green">75%</div>
+                </div>
+                <div style="padding: 0.5rem; display: flex; align-items: center; justify-content: center;">
+                    <div class="perf-badge perf-green">60%</div>
+                </div>
+                <div style="padding: 0.5rem; display: flex; align-items: center; justify-content: center;">
+                    <div class="perf-badge perf-gray">-</div>
+                </div>
+                
+                <!-- USOIL -->
+                <div class="perf-cell">USOIL</div>
+                <div style="padding: 0.5rem; display: flex; align-items: center; justify-content: center;">
+                    <div class="perf-badge perf-green">80%</div>
+                </div>
+                <div style="padding: 0.5rem; display: flex; align-items: center; justify-content: center;">
+                    <div class="perf-badge perf-yellow">50%</div>
+                </div>
+                <div style="padding: 0.5rem; display: flex; align-items: center; justify-content: center;">
+                    <div class="perf-badge perf-gray">-</div>
+                </div>
+                
+                <!-- BTCUSD -->
+                <div class="perf-cell">BTCUSD</div>
+                <div style="padding: 0.5rem; display: flex; align-items: center; justify-content: center;">
+                    <div class="perf-badge perf-yellow">55%</div>
+                </div>
+                <div style="padding: 0.5rem; display: flex; align-items: center; justify-content: center;">
+                    <div class="perf-badge perf-gray">-</div>
+                </div>
+                <div style="padding: 0.5rem; display: flex; align-items: center; justify-content: center;">
+                    <div class="perf-badge perf-green">65%</div>
+                </div>
+                
+                <!-- USTECH -->
+                <div class="perf-cell">USTECH</div>
+                <div style="padding: 0.5rem; display: flex; align-items: center; justify-content: center;">
+                    <div class="perf-badge perf-green">70%</div>
+                </div>
+                <div style="padding: 0.5rem; display: flex; align-items: center; justify-content: center;">
+                    <div class="perf-badge perf-red">40%</div>
+                </div>
+                <div style="padding: 0.5rem; display: flex; align-items: center; justify-content: center;">
+                    <div class="perf-badge perf-gray">-</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+st.markdown('</div>', unsafe_allow_html=True)
