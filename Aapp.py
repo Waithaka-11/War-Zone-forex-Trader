@@ -1,8 +1,10 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
+import gspread
+from google.oauth2.service_account import Credentials
 from datetime import datetime
+import matplotlib.pyplot as plt
+import numpy as np
 
 # Page config
 st.set_page_config(
@@ -40,17 +42,20 @@ st.markdown("""
         font-weight: bold;
         color: #88C0D0;
     }
-    .stButton>button {
+    .delete-btn {
         background-color: #BF616A;
         color: white;
         border: none;
-        padding: 0.5rem 1rem;
+        padding: 0.3rem 0.6rem;
         border-radius: 5px;
         font-weight: bold;
+        font-size: 0.8rem;
+        margin-right: 0.5rem;
     }
-    .stButton>button:hover {
+    .delete-btn:hover {
         background-color: #A5424E;
         color: white;
+        cursor: pointer;
     }
     .section-header {
         font-size: 1.8rem;
@@ -71,78 +76,150 @@ st.markdown("""
         color: #BF616A;
         font-weight: bold;
     }
+    .center-content {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        flex-direction: column;
+    }
 </style>
 """, unsafe_allow_html=True)
+
+# Google Sheets integration setup
+def setup_google_sheets():
+    try:
+        # Create the connection to Google Sheets
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive"
+        ]
+        
+        # Load credentials from Streamlit secrets
+        if 'gcp_service_account' in st.secrets:
+            creds_dict = dict(st.secrets['gcp_service_account'])
+            creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        else:
+            # For local development - you would need to set up your own service account
+            st.error("Google Sheets credentials not found. Please configure them in Streamlit secrets.")
+            return None
+        
+        client = gspread.authorize(creds)
+        
+        # Try to open the spreadsheet or create a new one
+        try:
+            spreadsheet = client.open("WarZoneForexTrader")
+        except gspread.SpreadsheetNotFound:
+            # Create a new spreadsheet if it doesn't exist
+            spreadsheet = client.create("WarZoneForexTrader")
+            # Share with yourself (replace with your email)
+            spreadsheet.share('your-email@gmail.com', perm_type='user', role='writer')
+            
+            # Set up the worksheets
+            worksheet = spreadsheet.sheet1
+            worksheet.update_title("Trades")
+            headers = ["ID", "Date", "Trader", "Instrument", "Direction", "Entry", "Exit", "P/L", "R/R Ratio", "Outcome"]
+            worksheet.append_row(headers)
+            
+        return spreadsheet
+    except Exception as e:
+        st.error(f"Error setting up Google Sheets: {e}")
+        return None
+
+# Initialize session state
+if 'trades' not in st.session_state:
+    st.session_state.trades = []
+if 'spreadsheet' not in st.session_state:
+    st.session_state.spreadsheet = setup_google_sheets()
+if 'initialized' not in st.session_state:
+    st.session_state.initialized = False
+
+# Load data from Google Sheets
+def load_data_from_sheets():
+    if st.session_state.spreadsheet:
+        try:
+            worksheet = st.session_state.spreadsheet.worksheet("Trades")
+            data = worksheet.get_all_records()
+            
+            # Convert to proper data types
+            for trade in data:
+                trade['ID'] = int(trade['ID']) if 'ID' in trade and trade['ID'] else 0
+                trade['P/L'] = float(trade['P/L']) if 'P/L' in trade and trade['P/L'] else 0.0
+                trade['R/R Ratio'] = float(trade['R/R Ratio']) if 'R/R Ratio' in trade and trade['R/R Ratio'] else 0.0
+                trade['Entry'] = float(trade['Entry']) if 'Entry' in trade and trade['Entry'] else 0.0
+                trade['Exit'] = float(trade['Exit']) if 'Exit' in trade and trade['Exit'] else 0.0
+            
+            return data
+        except Exception as e:
+            st.error(f"Error loading data from Google Sheets: {e}")
+            return []
+    return []
+
+# Save data to Google Sheets
+def save_data_to_sheets():
+    if st.session_state.spreadsheet:
+        try:
+            worksheet = st.session_state.spreadsheet.worksheet("Trades")
+            
+            # Clear existing data (except headers)
+            worksheet.clear()
+            headers = ["ID", "Date", "Trader", "Instrument", "Direction", "Entry", "Exit", "P/L", "R/R Ratio", "Outcome"]
+            worksheet.append_row(headers)
+            
+            # Add all trades
+            for trade in st.session_state.trades:
+                row = [
+                    trade.get('id', ''),
+                    trade.get('date', ''),
+                    trade.get('trader', ''),
+                    trade.get('instrument', ''),
+                    trade.get('direction', ''),
+                    trade.get('entry_price', ''),
+                    trade.get('exit_price', ''),
+                    trade.get('profit_loss', ''),
+                    trade.get('rr_ratio', ''),
+                    trade.get('outcome', '')
+                ]
+                worksheet.append_row(row)
+                
+            return True
+        except Exception as e:
+            st.error(f"Error saving data to Google Sheets: {e}")
+            return False
+    return False
+
+# Load data if not initialized
+if not st.session_state.initialized:
+    with st.spinner("Loading data from Google Sheets..."):
+        data = load_data_from_sheets()
+        if data:
+            # Convert to our format
+            converted_data = []
+            for item in data:
+                converted_data.append({
+                    'id': item.get('ID', ''),
+                    'date': item.get('Date', ''),
+                    'trader': item.get('Trader', ''),
+                    'instrument': item.get('Instrument', ''),
+                    'direction': item.get('Direction', ''),
+                    'entry_price': item.get('Entry', ''),
+                    'exit_price': item.get('Exit', ''),
+                    'profit_loss': item.get('P/L', ''),
+                    'rr_ratio': item.get('R/R Ratio', ''),
+                    'outcome': item.get('Outcome', '')
+                })
+            st.session_state.trades = converted_data
+        st.session_state.initialized = True
 
 # App title
 st.markdown('<h1 class="main-header">War Zone Forex Trader Dashboard</h1>', unsafe_allow_html=True)
 
-# Sample data (replace with your actual data loading logic)
-@st.cache_data
-def load_sample_data():
-    trades = [
-        {
-            'id': 1,  # Added ID field to prevent KeyError
-            'trader': 'Waithaka',
-            'instrument': 'EUR/USD',
-            'direction': 'Long',
-            'entry_price': 1.0850,
-            'exit_price': 1.0920,
-            'profit_loss': 700,
-            'rr_ratio': 2.1,
-            'outcome': 'Win',
-            'date': '2025-09-15'
-        },
-        {
-            'id': 2,
-            'trader': 'Wallace',
-            'instrument': 'GBP/USD',
-            'direction': 'Short',
-            'entry_price': 1.2650,
-            'exit_price': 1.2580,
-            'profit_loss': 700,
-            'rr_ratio': 1.8,
-            'outcome': 'Win',
-            'date': '2025-09-16'
-        },
-        {
-            'id': 3,
-            'trader': 'Waithaka',
-            'instrument': 'USD/JPY',
-            'direction': 'Long',
-            'entry_price': 147.50,
-            'exit_price': 148.20,
-            'profit_loss': 700,
-            'rr_ratio': 2.4,
-            'outcome': 'Win',
-            'date': '2025-09-17'
-        },
-        {
-            'id': 4,
-            'trader': 'Wallace',
-            'instrument': 'AUD/USD',
-            'direction': 'Short',
-            'entry_price': 0.6450,
-            'exit_price': 0.6480,
-            'profit_loss': -300,
-            'rr_ratio': 0.9,
-            'outcome': 'Loss',
-            'date': '2025-09-18'
-        }
-    ]
-    return trades
-
-# Load data
-trades_data = load_sample_data()
-
-# Initialize session state for trades if not exists
-if 'trades' not in st.session_state:
-    st.session_state.trades = trades_data
-
 # Function to delete a trade
 def delete_trade(trade_id):
-    st.session_state.trades = [trade for trade in st.session_state.trades if trade['id'] != trade_id]
-    st.success("Trade deleted successfully!")
+    st.session_state.trades = [trade for trade in st.session_state.trades if trade.get('id') != trade_id]
+    if save_data_to_sheets():
+        st.success("Trade deleted successfully!")
+    else:
+        st.error("Error saving to Google Sheets")
     st.rerun()
 
 # Main layout
@@ -153,32 +230,13 @@ with col1:
     
     # Create trade history table
     if st.session_state.trades:
-        table_data = []
-        for trade in st.session_state.trades:
-            # Use .get() method to prevent KeyError if any field is missing
-            row = {
-                'Date': trade.get('date', 'N/A'),
-                'Trader': trade.get('trader', 'N/A'),
-                'Instrument': trade.get('instrument', 'N/A'),
-                'Direction': trade.get('direction', 'N/A'),
-                'Entry': trade.get('entry_price', 'N/A'),
-                'Exit': trade.get('exit_price', 'N/A'),
-                'P/L ($)': trade.get('profit_loss', 'N/A'),
-                'R/R Ratio': trade.get('rr_ratio', 'N/A'),
-                'Outcome': trade.get('outcome', 'N/A'),
-                'Actions': trade.get('id', 'N/A')  # Using get to prevent KeyError
-            }
-            table_data.append(row)
-        
-        df = pd.DataFrame(table_data)
-        
         # Display the table with delete buttons
         for i, trade in enumerate(st.session_state.trades):
             cols = st.columns([0.5, 1, 1, 1, 1, 1, 1, 1, 1, 1])
             with cols[0]:
                 # Delete button with white text
-                if st.button("🗑️", key=f"delete_{trade['id']}", help="Delete trade"):
-                    delete_trade(trade['id'])
+                if st.button("🗑️", key=f"delete_{trade.get('id', i)}", help="Delete trade"):
+                    delete_trade(trade.get('id', i))
             with cols[1]:
                 st.write(trade.get('date', 'N/A'))
             with cols[2]:
@@ -202,7 +260,7 @@ with col1:
                 outcome_color = "#A3BE8C" if outcome == "Win" else "#BF616A"
                 st.markdown(f'<span style="color: {outcome_color}; font-weight: bold">{outcome}</span>', unsafe_allow_html=True)
     else:
-        st.info("No trades to display.")
+        st.info("No trades to display. Add your first trade below.")
 
 with col2:
     st.markdown('<div class="section-header">Performance Metrics</div>', unsafe_allow_html=True)
@@ -214,7 +272,7 @@ with col2:
         win_rate = (winning_trades / total_trades) * 100 if total_trades > 0 else 0
         
         # Trader performance
-        traders = set(t.get('trader') for t in st.session_state.trades)
+        traders = set(t.get('trader') for t in st.session_state.trades if t.get('trader'))
         trader_performance = {}
         
         for trader in traders:
@@ -230,20 +288,20 @@ with col2:
         m1, m2 = st.columns(2)
         
         with m1:
-            st.markdown("""
+            st.markdown(f"""
             <div class="metric-card">
                 <div class="metric-title">WIN RATE THIS MONTH</div>
-                <div class="metric-value">{:.1f}%</div>
+                <div class="metric-value">{win_rate:.1f}%</div>
             </div>
-            """.format(win_rate), unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
         
         with m2:
-            st.markdown("""
+            st.markdown(f"""
             <div class="metric-card">
                 <div class="metric-title">TOTAL TRADES</div>
-                <div class="metric-value">{}</div>
+                <div class="metric-value">{total_trades}</div>
             </div>
-            """.format(total_trades), unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
         
         st.markdown("---")
         st.subheader("Trader of the Month")
@@ -258,26 +316,25 @@ with col2:
         st.markdown("---")
         st.subheader("Overall Win Rate Distribution")
         
-        win_rate_data = {
-            'Trader': list(trader_performance.keys()),
-            'Win Rate': list(trader_performance.values())
-        }
-        
-        win_rate_df = pd.DataFrame(win_rate_data)
-        
-        fig = px.bar(win_rate_df, x='Trader', y='Win Rate', 
-                     title="Win Rate by Trader",
-                     color='Win Rate', color_continuous_scale='Teal')
-        
-        fig.update_layout(
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
-            font=dict(color='#D8DEE9'),
-            title_font_size=20,
-            showlegend=False
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
+        if trader_performance:
+            fig, ax = plt.subplots(figsize=(8, 4))
+            traders_list = list(trader_performance.keys())
+            win_rates = list(trader_performance.values())
+            
+            bars = ax.bar(traders_list, win_rates, color=['#88C0D0', '#A3BE8C', '#EBCB8B', '#BF616A'])
+            ax.set_ylabel('Win Rate (%)')
+            ax.set_ylim(0, 100)
+            
+            # Add value labels on bars
+            for bar in bars:
+                height = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width()/2., height + 1,
+                        f'{height:.1f}%', ha='center', va='bottom')
+            
+            plt.xticks(rotation=45)
+            st.pyplot(fig)
+        else:
+            st.info("No trader data available for chart.")
         
         # Instrument performance
         st.markdown("---")
@@ -285,30 +342,25 @@ with col2:
         
         instrument_data = []
         for trade in st.session_state.trades:
-            instrument_data.append({
-                'Trader': trade.get('trader'),
-                'Instrument': trade.get('instrument'),
-                'Outcome': trade.get('outcome')
-            })
+            if trade.get('trader') and trade.get('instrument'):
+                instrument_data.append({
+                    'Trader': trade.get('trader'),
+                    'Instrument': trade.get('instrument'),
+                    'Outcome': trade.get('outcome')
+                })
         
         if instrument_data:
             instrument_df = pd.DataFrame(instrument_data)
-            instrument_pivot = pd.crosstab(index=instrument_df['Trader'], 
-                                         columns=instrument_df['Instrument'])
+            instrument_counts = instrument_df.groupby(['Trader', 'Instrument']).size().unstack(fill_value=0)
             
-            fig2 = px.imshow(instrument_pivot, text_auto=True,
-                            aspect="auto",
-                            title="Trades by Instrument and Trader",
-                            color_continuous_scale='Blues')
-            
-            fig2.update_layout(
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                font=dict(color='#D8DEE9'),
-                title_font_size=20
-            )
-            
-            st.plotly_chart(fig2, use_container_width=True)
+            fig, ax = plt.subplots(figsize=(8, 4))
+            instrument_counts.plot(kind='bar', ax=ax, color=['#88C0D0', '#A3BE8C', '#EBCB8B', '#BF616A', '#B48EAD'])
+            ax.set_ylabel('Number of Trades')
+            ax.legend(title='Instrument', bbox_to_anchor=(1.05, 1), loc='upper left')
+            plt.xticks(rotation=45)
+            st.pyplot(fig)
+        else:
+            st.info("No instrument data available for chart.")
     else:
         st.info("No data available for performance metrics.")
 
@@ -320,14 +372,14 @@ with st.form("add_trade_form"):
     c1, c2, c3 = st.columns(3)
     
     with c1:
-        trader = st.selectbox("Trader", ["Waithaka", "Wallace"])
-        instrument = st.selectbox("Instrument", ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CHF"])
+        trader = st.selectbox("Trader", ["Waithaka", "Wallace", "Other"])
+        instrument = st.selectbox("Instrument", ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CHF", "XAU/USD"])
         direction = st.radio("Direction", ["Long", "Short"])
     
     with c2:
         entry_price = st.number_input("Entry Price", value=1.1000, step=0.0001, format="%.4f")
         exit_price = st.number_input("Exit Price", value=1.1050, step=0.0001, format="%.4f")
-        rr_ratio = st.number_input("R/R Ratio", value=1.5, step=0.1)
+        rr_ratio = st.number_input("R/R Ratio", value=1.5, step=0.1, min_value=0.1)
     
     with c3:
         profit_loss = st.number_input("Profit/Loss ($)", value=500, step=10)
@@ -337,8 +389,15 @@ with st.form("add_trade_form"):
     submitted = st.form_submit_button("Add Trade")
     
     if submitted:
+        # Generate a new ID
+        if st.session_state.trades:
+            max_id = max([t.get('id', 0) for t in st.session_state.trades])
+            new_id = max_id + 1
+        else:
+            new_id = 1
+            
         new_trade = {
-            'id': max([t['id'] for t in st.session_state.trades], default=0) + 1,
+            'id': new_id,
             'trader': trader,
             'instrument': instrument,
             'direction': direction,
@@ -351,5 +410,67 @@ with st.form("add_trade_form"):
         }
         
         st.session_state.trades.append(new_trade)
-        st.success("Trade added successfully!")
+        if save_data_to_sheets():
+            st.success("Trade added successfully!")
+        else:
+            st.error("Error saving to Google Sheets")
         st.rerun()
+
+# Instructions for setting up Google Sheets integration
+with st.expander("Google Sheets Setup Instructions"):
+    st.markdown("""
+    ### To enable Google Sheets integration:
+    
+    1. **Create a Google Service Account**:
+       - Go to the [Google Cloud Console](https://console.cloud.google.com/)
+       - Create a new project or select an existing one
+       - Enable the Google Sheets API and Google Drive API
+       - Create a service account and download the JSON key file
+    
+    2. **Add credentials to Streamlit**:
+       - In your Streamlit app, go to Settings → Secrets
+       - Add your service account credentials as follows:
+         
+         ```toml
+         [gcp_service_account]
+         type = "service_account"
+         project_id = "your-project-id"
+         private_key_id = "your-private-key-id"
+         private_key = "-----BEGIN PRIVATE KEY-----\\nyour-private-key\\n-----END PRIVATE KEY-----\\n"
+         client_email = "your-service-account-email@your-project-id.iam.gserviceaccount.com"
+         client_id = "your-client-id"
+         auth_uri = "https://accounts.google.com/o/oauth2/auth"
+         token_uri = "https://oauth2.googleapis.com/token"
+         auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
+         client_x509_cert_url = "https://www.googleapis.com/robot/v1/metadata/x509/your-service-account-email%40your-project-id.iam.gserviceaccount.com"
+         ```
+    
+    3. **Share your Google Sheet**:
+       - Create a Google Sheet named "WarZoneForexTrader"
+       - Share it with your service account email with editor permissions
+    """)
+
+# Add a refresh button
+if st.button("Refresh Data from Google Sheets"):
+    with st.spinner("Refreshing data..."):
+        data = load_data_from_sheets()
+        if data:
+            # Convert to our format
+            converted_data = []
+            for item in data:
+                converted_data.append({
+                    'id': item.get('ID', ''),
+                    'date': item.get('Date', ''),
+                    'trader': item.get('Trader', ''),
+                    'instrument': item.get('Instrument', ''),
+                    'direction': item.get('Direction', ''),
+                    'entry_price': item.get('Entry', ''),
+                    'exit_price': item.get('Exit', ''),
+                    'profit_loss': item.get('P/L', ''),
+                    'rr_ratio': item.get('R/R Ratio', ''),
+                    'outcome': item.get('Outcome', '')
+                })
+            st.session_state.trades = converted_data
+            st.success("Data refreshed successfully!")
+        else:
+            st.error("Error refreshing data from Google Sheets")
