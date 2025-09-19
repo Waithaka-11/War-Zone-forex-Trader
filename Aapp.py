@@ -498,157 +498,143 @@ with col_main:
     
     # Trading History
     st.markdown("""
-    <div class="trade-card">
-        <div class="card-header">
-            <div style="display: flex; align-items: center;">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.5rem;">
-                    <path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h4"></path>
-                </svg>
-                <h3 style="font-weight: 600; margin: 0;">Trading History</h3>
-            </div>
-        </div>
-        <div style="overflow-x: auto;">
-    """, unsafe_allow_html=True)
-    
-    # Trading table
-    table_html = """
-    <table class="trading-table">
-        <thead>
-            <tr>
-                <th>Date</th>
-                <th>Trader</th>
-                <th>Instrument</th>
-                <th>Entry</th>
-                <th>SL</th>
-                <th>Target</th>
-                <th>Risk</th>
-                <th>Reward</th>
-                <th>R/R Ratio</th>
-                <th>Outcome</th>
-                <th>Result</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-    """
-    
-    for trade in st.session_state.trades:
-        result_class = "result-win" if trade['result'] == 'Win' else "result-loss"
-        table_html += f"""
-        <tr>
-            <td>{trade['date']}</td>
-            <td>{trade['trader']}</td>
-            <td>{trade['instrument']}</td>
-            <td>{trade['entry']}</td>
-            <td>{trade['sl']}</td>
-            <td>{trade['target']}</td>
-            <td>{trade['risk']}</td>
-            <td>{trade['reward']}</td>
-            <td>{trade['rrRatio']}</td>
-            <td>{trade['outcome']}</td>
-            <td><span class="result-badge {result_class}">{trade['result']}</span></td>
-            <td>
-                <button onclick="alert('Delete functionality would be here')" style="color: #ef4444; background: none; border: none; cursor: pointer; padding: 0.25rem; border-radius: 0.25rem;">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="3,6 5,6 21,6"></polyline>
-                        <path d="m19,6v14a2,2 0 0,1 -2,2H7a2,2 0 0,1 -2,-2V6m3,0V4a2,2 0 0,1 2,-2h4a2,2 0 0,1 2,2v2"></path>
-                        <line x1="10" y1="11" x2="10" y2="17"></line>
-                        <line x1="14" y1="11" x2="14" y2="17"></line>
-                    </svg>
-                </button>
-            </td>
-        </tr>
-        """
-    
-    table_html += """
-        </tbody>
-    </table>
+    <div style="background: white; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem;">
+        <div style="background-color: #334155; color: white; padding: 0.75rem 1rem; border-radius: 0.5rem 0.5rem 0 0; display: flex; align-items: center;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.5rem;">
+                <path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h4"></path>
+            </svg>
+            <h3 style="font-weight: 600; margin: 0; font-size: 1rem;">Trading History</h3>
         </div>
     </div>
-    """
+    """, unsafe_allow_html=True)
     
-    st.markdown(table_html, unsafe_allow_html=True)
+    # Create DataFrame for the table
+    df_trades = pd.DataFrame(st.session_state.trades)
+    
+    # Format the dataframe for display
+    if not df_trades.empty:
+        display_df = df_trades.copy()
+        display_df['Actions'] = '🗑️'
+        
+        # Custom styling for the dataframe
+        def color_result(val):
+            if val == 'Win':
+                return 'background-color: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 12px; font-weight: 500;'
+            else:
+                return 'background-color: #fee2e2; color: #dc2626; padding: 4px 8px; border-radius: 12px; font-weight: 500;'
+        
+        st.dataframe(
+            display_df[['date', 'trader', 'instrument', 'entry', 'sl', 'target', 'risk', 'reward', 'rrRatio', 'outcome', 'result']].rename(columns={
+                'date': 'Date',
+                'trader': 'Trader', 
+                'instrument': 'Instrument',
+                'entry': 'Entry',
+                'sl': 'SL',
+                'target': 'Target',
+                'risk': 'Risk',
+                'reward': 'Reward',
+                'rrRatio': 'R/R Ratio',
+                'outcome': 'Outcome',
+                'result': 'Result'
+            }),
+            use_container_width=True,
+            hide_index=True
+        )
+        
+        # Delete functionality
+        if st.button("🗑️ Delete Last Trade", type="secondary"):
+            if st.session_state.trades:
+                st.session_state.trades.pop()
+                st.rerun()
 
 with col_sidebar:
     # Performance Metrics
     st.markdown("""
-    <div class="trade-card">
-        <div class="card-header">
-            <div style="display: flex; align-items: center;">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.5rem;">
-                    <path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path>
-                    <path d="M22 12A10 10 0 0 0 12 2v10z"></path>
-                </svg>
-                <h3 style="font-weight: 600; margin: 0;">Performance Metrics</h3>
-            </div>
-        </div>
-        <div class="card-body" style="padding: 0;">
-            <div style="background-color: #475569; color: white; padding: 0.75rem; font-size: 0.875rem; font-weight: 500;">
-                Overall Win Rate Distribution
-            </div>
-            <div style="padding: 1rem; background-color: #f9fafb;">
-    """, unsafe_allow_html=True)
-    
-    # SVG Donut Chart (matching exact React implementation)
-    st.markdown("""
-    <div class="donut-container">
-        <div style="width: 12rem; height: 12rem; position: relative;">
-            <svg viewBox="0 0 100 100" style="width: 100%; height: 100%; transform: rotate(-90deg);">
-                <!-- Background circle -->
-                <circle cx="50" cy="50" r="35" fill="none" stroke="#f3f4f6" stroke-width="12"/>
-                
-                <!-- Waithaka - 37.1% of total - Blue -->
-                <circle cx="50" cy="50" r="35" fill="none" stroke="#3b82f6" stroke-width="12" 
-                        stroke-dasharray="81.6 138.4" stroke-dashoffset="0" 
-                        style="transition: all 0.5s;"/>
-                
-                <!-- Max - 33.5% of total - Black -->
-                <circle cx="50" cy="50" r="35" fill="none" stroke="#000000" stroke-width="12" 
-                        stroke-dasharray="73.7 146.3" stroke-dashoffset="-81.6" 
-                        style="transition: all 0.5s;"/>
-                
-                <!-- Wallace - 29.4% of total - Yellow -->
-                <circle cx="50" cy="50" r="35" fill="none" stroke="#eab308" stroke-width="12" 
-                        stroke-dasharray="64.7 155.3" stroke-dashoffset="-155.3" 
-                        style="transition: all 0.5s;"/>
+    <div style="background: white; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem;">
+        <div style="background-color: #334155; color: white; padding: 0.75rem 1rem; border-radius: 0.5rem 0.5rem 0 0; display: flex; align-items: center;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.5rem;">
+                <path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path>
+                <path d="M22 12A10 10 0 0 0 12 2v10z"></path>
             </svg>
-            <!-- Center text -->
-            <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center;">
-                <div style="text-align: center;">
-                    <div style="font-size: 1.25rem; font-weight: bold; color: #374151;">65.5%</div>
-                    <div style="font-size: 0.75rem; color: #6b7280;">Avg Rate</div>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <div style="margin-top: 1rem;">
-        <div class="legend-item">
-            <div style="display: flex; align-items: center;">
-                <div class="legend-color" style="background-color: #fb923c;"></div>
-                <span>Waithaka</span>
-            </div>
-            <span style="font-weight: 600;">72.5%</span>
-        </div>
-        <div class="legend-item">
-            <div style="display: flex; align-items: center;">
-                <div class="legend-color" style="background-color: #3b82f6;"></div>
-                <span>Max</span>
-            </div>
-            <span style="font-weight: 600;">65.3%</span>
-        </div>
-        <div class="legend-item">
-            <div style="display: flex; align-items: center;">
-                <div class="legend-color" style="background-color: #9ca3af;"></div>
-                <span>Wallace</span>
-            </div>
-            <span style="font-weight: 600;">56.7%</span>
-        </div>
-    </div>
-            </div>
+            <h3 style="font-weight: 600; margin: 0; font-size: 1rem;">Performance Metrics</h3>
         </div>
     </div>
     """, unsafe_allow_html=True)
+    
+    st.markdown("""
+    <div style="background-color: #475569; color: white; padding: 0.75rem; font-size: 0.875rem; font-weight: 500; margin: -1.5rem -1rem 0 -1rem;">
+        Overall Win Rate Distribution
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Create Plotly donut chart matching the exact design
+    labels = ['Waithaka', 'Max', 'Wallace']
+    values = [72.5, 65.3, 58.7]
+    colors = ['#fb923c', '#3b82f6', '#9ca3af']
+    
+    fig_donut = go.Figure(data=[go.Pie(
+        labels=labels, 
+        values=values, 
+        hole=0.6,
+        marker=dict(colors=colors, line=dict(color='#FFFFFF', width=2)),
+        textinfo='none',
+        hovertemplate='<b>%{label}</b><br>Win Rate: %{value}%<extra></extra>'
+    )])
+    
+    fig_donut.update_layout(
+        showlegend=False,
+        height=300,
+        margin=dict(t=20, b=20, l=20, r=20),
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        annotations=[
+            dict(
+                text=f'<b>65.5%</b><br><span style="font-size:12px; color:#6b7280;">Avg Rate</span>', 
+                x=0.5, y=0.5, 
+                font_size=20, 
+                showarrow=False,
+                font_color='#374151'
+            )
+        ]
+    )
+    
+    st.plotly_chart(fig_donut, use_container_width=True)
+    
+    # Legend
+    col_legend1, col_legend2, col_legend3 = st.columns(3)
+    
+    with col_legend1:
+        st.markdown("""
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+            <div style="display: flex; align-items: center;">
+                <div style="width: 0.75rem; height: 0.75rem; background-color: #fb923c; border-radius: 0.125rem; margin-right: 0.5rem;"></div>
+                <span style="font-size: 0.875rem;">Waithaka</span>
+            </div>
+            <span style="font-weight: 600; font-size: 0.875rem;">72.5%</span>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col_legend2:
+        st.markdown("""
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+            <div style="display: flex; align-items: center;">
+                <div style="width: 0.75rem; height: 0.75rem; background-color: #3b82f6; border-radius: 0.125rem; margin-right: 0.5rem;"></div>
+                <span style="font-size: 0.875rem;">Max</span>
+            </div>
+            <span style="font-weight: 600; font-size: 0.875rem;">65.3%</span>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col_legend3:
+        st.markdown("""
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+            <div style="display: flex; align-items: center;">
+                <div style="width: 0.75rem; height: 0.75rem; background-color: #9ca3af; border-radius: 0.125rem; margin-right: 0.5rem;"></div>
+                <span style="font-size: 0.875rem;">Wallace</span>
+            </div>
+            <span style="font-weight: 600; font-size: 0.875rem;">58.7%</span>
+        </div>
+        """, unsafe_allow_html=True)
     
     # Trader of the Month
     st.markdown("""
@@ -677,75 +663,46 @@ with col_sidebar:
     
     # Instrument Performance by Trader
     st.markdown("""
-    <div class="trade-card">
-        <div class="card-header">
-            <div style="display: flex; align-items: center;">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.5rem;">
-                    <line x1="12" y1="20" x2="12" y2="10"></line>
-                    <line x1="18" y1="20" x2="18" y2="4"></line>
-                    <line x1="6" y1="20" x2="6" y2="16"></line>
-                </svg>
-                <h3 style="font-weight: 600; margin: 0;">Instrument Performance by Trader</h3>
-            </div>
-        </div>
-        <div style="padding: 1rem;">
-            <div class="perf-grid">
-                <!-- Header -->
-                <div class="perf-header">Instrument</div>
-                <div class="perf-header">Waithaka</div>
-                <div class="perf-header">Wallace</div>
-                <div class="perf-header">Max</div>
-                
-                <!-- XAUUSD -->
-                <div class="perf-cell">XAUUSD</div>
-                <div style="padding: 0.5rem; display: flex; align-items: center; justify-content: center;">
-                    <div class="perf-badge perf-green">75%</div>
-                </div>
-                <div style="padding: 0.5rem; display: flex; align-items: center; justify-content: center;">
-                    <div class="perf-badge perf-green">60%</div>
-                </div>
-                <div style="padding: 0.5rem; display: flex; align-items: center; justify-content: center;">
-                    <div class="perf-badge perf-gray">-</div>
-                </div>
-                
-                <!-- USOIL -->
-                <div class="perf-cell">USOIL</div>
-                <div style="padding: 0.5rem; display: flex; align-items: center; justify-content: center;">
-                    <div class="perf-badge perf-green">80%</div>
-                </div>
-                <div style="padding: 0.5rem; display: flex; align-items: center; justify-content: center;">
-                    <div class="perf-badge perf-yellow">50%</div>
-                </div>
-                <div style="padding: 0.5rem; display: flex; align-items: center; justify-content: center;">
-                    <div class="perf-badge perf-gray">-</div>
-                </div>
-                
-                <!-- BTCUSD -->
-                <div class="perf-cell">BTCUSD</div>
-                <div style="padding: 0.5rem; display: flex; align-items: center; justify-content: center;">
-                    <div class="perf-badge perf-yellow">55%</div>
-                </div>
-                <div style="padding: 0.5rem; display: flex; align-items: center; justify-content: center;">
-                    <div class="perf-badge perf-gray">-</div>
-                </div>
-                <div style="padding: 0.5rem; display: flex; align-items: center; justify-content: center;">
-                    <div class="perf-badge perf-green">65%</div>
-                </div>
-                
-                <!-- USTECH -->
-                <div class="perf-cell">USTECH</div>
-                <div style="padding: 0.5rem; display: flex; align-items: center; justify-content: center;">
-                    <div class="perf-badge perf-green">70%</div>
-                </div>
-                <div style="padding: 0.5rem; display: flex; align-items: center; justify-content: center;">
-                    <div class="perf-badge perf-red">40%</div>
-                </div>
-                <div style="padding: 0.5rem; display: flex; align-items: center; justify-content: center;">
-                    <div class="perf-badge perf-gray">-</div>
-                </div>
-            </div>
+    <div style="background: white; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem;">
+        <div style="background-color: #334155; color: white; padding: 0.75rem 1rem; border-radius: 0.5rem 0.5rem 0 0; display: flex; align-items: center;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.5rem;">
+                <line x1="12" y1="20" x2="12" y2="10"></line>
+                <line x1="18" y1="20" x2="18" y2="4"></line>
+                <line x1="6" y1="20" x2="6" y2="16"></line>
+            </svg>
+            <h3 style="font-weight: 600; margin: 0; font-size: 1rem;">Instrument Performance by Trader</h3>
         </div>
     </div>
     """, unsafe_allow_html=True)
+    
+    # Create performance data
+    performance_data = {
+        'Instrument': ['XAUUSD', 'USOIL', 'BTCUSD', 'USTECH'],
+        'Waithaka': ['75%', '80%', '55%', '70%'],
+        'Wallace': ['60%', '50%', '-', '40%'],
+        'Max': ['-', '-', '65%', '-']
+    }
+    
+    # Create DataFrame
+    perf_df = pd.DataFrame(performance_data)
+    
+    # Style the dataframe
+    def style_performance(val):
+        if val == '-':
+            return 'background-color: #6b7280; color: white; text-align: center; font-weight: bold; padding: 8px; border-radius: 4px;'
+        elif val in ['75%', '80%', '60%', '65%', '70%']:
+            return 'background-color: #10b981; color: white; text-align: center; font-weight: bold; padding: 8px; border-radius: 4px;'
+        elif val in ['55%', '50%']:
+            return 'background-color: #f59e0b; color: white; text-align: center; font-weight: bold; padding: 8px; border-radius: 4px;'
+        elif val == '40%':
+            return 'background-color: #ef4444; color: white; text-align: center; font-weight: bold; padding: 8px; border-radius: 4px;'
+        else:
+            return 'background-color: #f3f4f6; text-align: center; font-weight: 500; padding: 12px;'
+    
+    # Display the styled dataframe
+    styled_df = perf_df.style.applymap(style_performance, subset=['Waithaka', 'Wallace', 'Max'])
+    styled_df = styled_df.applymap(lambda x: 'background-color: #f3f4f6; text-align: center; font-weight: 500; padding: 12px;', subset=['Instrument'])
+    
+    st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
 st.markdown('</div>', unsafe_allow_html=True)
