@@ -3,8 +3,6 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
-import matplotlib.pyplot as plt
-import numpy as np
 
 # Page config
 st.set_page_config(
@@ -52,11 +50,6 @@ st.markdown("""
         font-size: 0.8rem;
         margin-right: 0.5rem;
     }
-    .delete-btn:hover {
-        background-color: #A5424E;
-        color: white;
-        cursor: pointer;
-    }
     .section-header {
         font-size: 1.8rem;
         color: #88C0D0;
@@ -64,9 +57,6 @@ st.markdown("""
         padding-bottom: 0.5rem;
         margin-top: 2rem;
         margin-bottom: 1rem;
-    }
-    .trader-table {
-        width: 100%;
     }
     .positive-value {
         color: #A3BE8C;
@@ -81,6 +71,44 @@ st.markdown("""
         justify-content: center;
         align-items: center;
         flex-direction: column;
+    }
+    .win-rate-bar {
+        height: 20px;
+        background: linear-gradient(90deg, #BF616A 0%, #A3BE8C 100%);
+        border-radius: 10px;
+        margin: 10px 0;
+        position: relative;
+    }
+    .win-rate-fill {
+        height: 100%;
+        background-color: #A3BE8C;
+        border-radius: 10px;
+    }
+    .win-rate-text {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: white;
+        font-weight: bold;
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
+    }
+    .performance-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 15px 0;
+    }
+    .performance-table th, .performance-table td {
+        padding: 8px 12px;
+        text-align: left;
+        border-bottom: 1px solid #4C566A;
+    }
+    .performance-table th {
+        background-color: #3B4252;
+        color: #88C0D0;
+    }
+    .performance-table tr:hover {
+        background-color: #434C5E;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -99,8 +127,8 @@ def setup_google_sheets():
             creds_dict = dict(st.secrets['gcp_service_account'])
             creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         else:
-            # For local development - you would need to set up your own service account
-            st.error("Google Sheets credentials not found. Please configure them in Streamlit secrets.")
+            # For local development or without Google Sheets
+            st.warning("Google Sheets credentials not found. Using demo mode with local data storage.")
             return None
         
         client = gspread.authorize(creds)
@@ -122,7 +150,7 @@ def setup_google_sheets():
             
         return spreadsheet
     except Exception as e:
-        st.error(f"Error setting up Google Sheets: {e}")
+        st.warning(f"Google Sheets setup failed: {e}. Using demo mode.")
         return None
 
 # Initialize session state
@@ -133,7 +161,60 @@ if 'spreadsheet' not in st.session_state:
 if 'initialized' not in st.session_state:
     st.session_state.initialized = False
 
-# Load data from Google Sheets
+# Sample data for demo mode
+def get_sample_data():
+    return [
+        {
+            'id': 1,
+            'trader': 'Waithaka',
+            'instrument': 'EUR/USD',
+            'direction': 'Long',
+            'entry_price': 1.0850,
+            'exit_price': 1.0920,
+            'profit_loss': 700,
+            'rr_ratio': 2.1,
+            'outcome': 'Win',
+            'date': '2025-09-15'
+        },
+        {
+            'id': 2,
+            'trader': 'Wallace',
+            'instrument': 'GBP/USD',
+            'direction': 'Short',
+            'entry_price': 1.2650,
+            'exit_price': 1.2580,
+            'profit_loss': 700,
+            'rr_ratio': 1.8,
+            'outcome': 'Win',
+            'date': '2025-09-16'
+        },
+        {
+            'id': 3,
+            'trader': 'Waithaka',
+            'instrument': 'USD/JPY',
+            'direction': 'Long',
+            'entry_price': 147.50,
+            'exit_price': 148.20,
+            'profit_loss': 700,
+            'rr_ratio': 2.4,
+            'outcome': 'Win',
+            'date': '2025-09-17'
+        },
+        {
+            'id': 4,
+            'trader': 'Wallace',
+            'instrument': 'AUD/USD',
+            'direction': 'Short',
+            'entry_price': 0.6450,
+            'exit_price': 0.6480,
+            'profit_loss': -300,
+            'rr_ratio': 0.9,
+            'outcome': 'Loss',
+            'date': '2025-09-18'
+        }
+    ]
+
+# Load data from Google Sheets or use sample data
 def load_data_from_sheets():
     if st.session_state.spreadsheet:
         try:
@@ -150,11 +231,12 @@ def load_data_from_sheets():
             
             return data
         except Exception as e:
-            st.error(f"Error loading data from Google Sheets: {e}")
-            return []
-    return []
+            st.warning(f"Error loading from Google Sheets: {e}. Using sample data.")
+            return get_sample_data()
+    else:
+        return get_sample_data()
 
-# Save data to Google Sheets
+# Save data to Google Sheets or just update session state
 def save_data_to_sheets():
     if st.session_state.spreadsheet:
         try:
@@ -183,13 +265,13 @@ def save_data_to_sheets():
                 
             return True
         except Exception as e:
-            st.error(f"Error saving data to Google Sheets: {e}")
+            st.warning(f"Error saving to Google Sheets: {e}. Data stored locally only.")
             return False
-    return False
+    return True  # Return True for local storage
 
 # Load data if not initialized
 if not st.session_state.initialized:
-    with st.spinner("Loading data from Google Sheets..."):
+    with st.spinner("Loading data..."):
         data = load_data_from_sheets()
         if data:
             # Convert to our format
@@ -218,8 +300,6 @@ def delete_trade(trade_id):
     st.session_state.trades = [trade for trade in st.session_state.trades if trade.get('id') != trade_id]
     if save_data_to_sheets():
         st.success("Trade deleted successfully!")
-    else:
-        st.error("Error saving to Google Sheets")
     st.rerun()
 
 # Main layout
@@ -312,31 +392,23 @@ with col2:
         </div>
         """, unsafe_allow_html=True)
         
-        # Win rate distribution chart
+        # Win rate distribution using custom bar visualization
         st.markdown("---")
         st.subheader("Overall Win Rate Distribution")
         
         if trader_performance:
-            fig, ax = plt.subplots(figsize=(8, 4))
-            traders_list = list(trader_performance.keys())
-            win_rates = list(trader_performance.values())
-            
-            bars = ax.bar(traders_list, win_rates, color=['#88C0D0', '#A3BE8C', '#EBCB8B', '#BF616A'])
-            ax.set_ylabel('Win Rate (%)')
-            ax.set_ylim(0, 100)
-            
-            # Add value labels on bars
-            for bar in bars:
-                height = bar.get_height()
-                ax.text(bar.get_x() + bar.get_width()/2., height + 1,
-                        f'{height:.1f}%', ha='center', va='bottom')
-            
-            plt.xticks(rotation=45)
-            st.pyplot(fig)
+            for trader, rate in trader_performance.items():
+                st.markdown(f"**{trader}**")
+                st.markdown(f"""
+                <div class="win-rate-bar">
+                    <div class="win-rate-fill" style="width: {rate}%;"></div>
+                    <div class="win-rate-text">{rate:.1f}%</div>
+                </div>
+                """, unsafe_allow_html=True)
         else:
-            st.info("No trader data available for chart.")
+            st.info("No trader data available.")
         
-        # Instrument performance
+        # Instrument performance table
         st.markdown("---")
         st.subheader("Instrument Performance by Trader")
         
@@ -353,14 +425,10 @@ with col2:
             instrument_df = pd.DataFrame(instrument_data)
             instrument_counts = instrument_df.groupby(['Trader', 'Instrument']).size().unstack(fill_value=0)
             
-            fig, ax = plt.subplots(figsize=(8, 4))
-            instrument_counts.plot(kind='bar', ax=ax, color=['#88C0D0', '#A3BE8C', '#EBCB8B', '#BF616A', '#B48EAD'])
-            ax.set_ylabel('Number of Trades')
-            ax.legend(title='Instrument', bbox_to_anchor=(1.05, 1), loc='upper left')
-            plt.xticks(rotation=45)
-            st.pyplot(fig)
+            # Display as a table
+            st.dataframe(instrument_counts, use_container_width=True)
         else:
-            st.info("No instrument data available for chart.")
+            st.info("No instrument data available.")
     else:
         st.info("No data available for performance metrics.")
 
@@ -412,46 +480,10 @@ with st.form("add_trade_form"):
         st.session_state.trades.append(new_trade)
         if save_data_to_sheets():
             st.success("Trade added successfully!")
-        else:
-            st.error("Error saving to Google Sheets")
         st.rerun()
 
-# Instructions for setting up Google Sheets integration
-with st.expander("Google Sheets Setup Instructions"):
-    st.markdown("""
-    ### To enable Google Sheets integration:
-    
-    1. **Create a Google Service Account**:
-       - Go to the [Google Cloud Console](https://console.cloud.google.com/)
-       - Create a new project or select an existing one
-       - Enable the Google Sheets API and Google Drive API
-       - Create a service account and download the JSON key file
-    
-    2. **Add credentials to Streamlit**:
-       - In your Streamlit app, go to Settings → Secrets
-       - Add your service account credentials as follows:
-         
-         ```toml
-         [gcp_service_account]
-         type = "service_account"
-         project_id = "your-project-id"
-         private_key_id = "your-private-key-id"
-         private_key = "-----BEGIN PRIVATE KEY-----\\nyour-private-key\\n-----END PRIVATE KEY-----\\n"
-         client_email = "your-service-account-email@your-project-id.iam.gserviceaccount.com"
-         client_id = "your-client-id"
-         auth_uri = "https://accounts.google.com/o/oauth2/auth"
-         token_uri = "https://oauth2.googleapis.com/token"
-         auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
-         client_x509_cert_url = "https://www.googleapis.com/robot/v1/metadata/x509/your-service-account-email%40your-project-id.iam.gserviceaccount.com"
-         ```
-    
-    3. **Share your Google Sheet**:
-       - Create a Google Sheet named "WarZoneForexTrader"
-       - Share it with your service account email with editor permissions
-    """)
-
 # Add a refresh button
-if st.button("Refresh Data from Google Sheets"):
+if st.button("Refresh Data"):
     with st.spinner("Refreshing data..."):
         data = load_data_from_sheets()
         if data:
@@ -472,5 +504,3 @@ if st.button("Refresh Data from Google Sheets"):
                 })
             st.session_state.trades = converted_data
             st.success("Data refreshed successfully!")
-        else:
-            st.error("Error refreshing data from Google Sheets")
