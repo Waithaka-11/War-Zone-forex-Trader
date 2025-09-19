@@ -30,10 +30,17 @@ st.markdown("""
         color: white;
         border-radius: 10px 10px 0 0 !important;
         font-weight: 600;
+        padding: 12px 20px;
     }
     .table thead th {
         background-color: #34495e;
         color: white;
+        padding: 12px 8px;
+        font-weight: 600;
+    }
+    .table td {
+        padding: 10px 8px;
+        vertical-align: middle;
     }
     .btn-primary {
         background-color: #3498db;
@@ -55,6 +62,15 @@ st.markdown("""
     }
     .btn-danger:hover {
         background-color: #c0392b;
+    }
+    .btn-outline-danger {
+        border: 1px solid #e74c3c;
+        color: #e74c3c;
+        background: transparent;
+    }
+    .btn-outline-danger:hover {
+        background-color: #e74c3c;
+        color: white;
     }
     .suggestion-pill {
         display: inline-block;
@@ -90,10 +106,12 @@ st.markdown("""
     .stats-box h6 {
         font-size: 0.9rem;
         color: #7f8c8d;
+        margin: 0;
     }
     .stats-box h3 {
         font-weight: 700;
         color: #2c3e50;
+        margin: 5px 0 0 0;
     }
     .positive {
         background-color: rgba(46, 204, 113, 0.15);
@@ -119,31 +137,27 @@ st.markdown("""
     .navbar-dark .navbar-nav .nav-link:hover {
         color: white !important;
     }
-    /* Form styles */
-    .stSelectbox > div > div {
-        border-radius: 5px;
-    }
-    .stTextInput > div > div > input {
-        border-radius: 5px;
-    }
-    .stNumberInput > div > div > input {
-        border-radius: 5px;
-    }
-    .stDateInput > div > div > input {
-        border-radius: 5px;
-    }
     /* Badge styles */
     .badge.bg-success {
         background-color: #28a745 !important;
         color: white;
-        padding: 0.25em 0.4em;
+        padding: 0.4em 0.6em;
         border-radius: 0.25rem;
+        font-size: 0.85em;
+        font-weight: 600;
     }
     .badge.bg-danger {
         background-color: #dc3545 !important;
         color: white;
-        padding: 0.25em 0.4em;
+        padding: 0.4em 0.6em;
         border-radius: 0.25rem;
+        font-size: 0.85em;
+        font-weight: 600;
+    }
+    /* Action buttons */
+    .action-btn {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.875rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -223,9 +237,53 @@ def save_data_to_sheets(spreadsheet, trades):
         st.warning(f"Error saving data: {e}")
         return False
 
-# Initialize session state
+# Initialize session state with sample data if empty
 if 'trades' not in st.session_state:
-    st.session_state.trades = []
+    st.session_state.trades = [
+        {
+            'id': 1,
+            'date': '2023-10-05',
+            'trader': 'Waithaka',
+            'instrument': 'XAUUSD',
+            'entry': 1820.50,
+            'sl': 1815.00,
+            'target': 1830.00,
+            'risk': 5.50,
+            'reward': 9.50,
+            'rr_ratio': 1.73,
+            'outcome': 'Target Hit',
+            'result': 'Win'
+        },
+        {
+            'id': 2,
+            'date': '2023-10-04',
+            'trader': 'Wallace',
+            'instrument': 'USOIL',
+            'entry': 89.30,
+            'sl': 88.50,
+            'target': 91.00,
+            'risk': 0.80,
+            'reward': 1.70,
+            'rr_ratio': 2.13,
+            'outcome': 'SL Hit',
+            'result': 'Loss'
+        },
+        {
+            'id': 3,
+            'date': '2023-10-03',
+            'trader': 'Max',
+            'instrument': 'BTCUSD',
+            'entry': 27450.00,
+            'sl': 27200.00,
+            'target': 27800.00,
+            'risk': 250.00,
+            'reward': 350.00,
+            'rr_ratio': 1.40,
+            'outcome': 'Target Hit',
+            'result': 'Win'
+        }
+    ]
+
 if 'spreadsheet' not in st.session_state:
     st.session_state.spreadsheet = setup_google_sheets()
 if 'initialized' not in st.session_state:
@@ -238,6 +296,18 @@ if st.session_state.spreadsheet and not st.session_state.initialized:
         if trades:
             st.session_state.trades = trades
         st.session_state.initialized = True
+
+# Function to delete a trade
+def delete_trade(trade_id):
+    st.session_state.trades = [trade for trade in st.session_state.trades if trade['id'] != trade_id]
+    if st.session_state.spreadsheet:
+        if save_data_to_sheets(st.session_state.spreadsheet, st.session_state.trades):
+            st.success("Trade deleted successfully!")
+        else:
+            st.error("Error saving to Google Sheets")
+    else:
+        st.success("Trade deleted from local storage!")
+    st.rerun()
 
 # Navbar
 st.markdown("""
@@ -334,15 +404,24 @@ with col1:
     """, unsafe_allow_html=True)
     
     if st.session_state.trades:
-        # Create HTML table
+        # Create HTML table with exact structure
         table_html = """
         <div class="table-responsive">
-            <table class="table table-hover">
+            <table class="table table-hover" style="width:100%">
                 <thead>
                     <tr>
-                        <th>Date</th><th>Trader</th><th>Instrument</th><th>Entry</th>
-                        <th>SL</th><th>Target</th><th>Risk</th><th>Reward</th>
-                        <th>R/R Ratio</th><th>Outcome</th><th>Result</th><th>Actions</th>
+                        <th>Date</th>
+                        <th>Trader</th>
+                        <th>Instrument</th>
+                        <th>Entry</th>
+                        <th>SL</th>
+                        <th>Target</th>
+                        <th>Risk</th>
+                        <th>Reward</th>
+                        <th>R/R Ratio</th>
+                        <th>Outcome</th>
+                        <th>Result</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -357,16 +436,16 @@ with col1:
                 <td>{trade['date']}</td>
                 <td>{trade['trader']}</td>
                 <td>{trade['instrument']}</td>
-                <td>{trade['entry']:.5f}</td>
-                <td>{trade['sl']:.5f}</td>
-                <td>{trade['target']:.5f}</td>
-                <td>{trade['risk']:.5f}</td>
-                <td>{trade['reward']:.5f}</td>
+                <td>{trade['entry']:.2f}</td>
+                <td>{trade['sl']:.2f}</td>
+                <td>{trade['target']:.2f}</td>
+                <td>{trade['risk']:.2f}</td>
+                <td>{trade['reward']:.2f}</td>
                 <td>{trade['rr_ratio']:.2f}</td>
                 <td>{trade['outcome']}</td>
                 <td><span class="badge {badge_class}">{trade['result']}</span></td>
                 <td>
-                    <button class="btn btn-sm btn-outline-danger" onclick="deleteTrade({trade['id']})">
+                    <button class="btn btn-sm btn-outline-danger action-btn" onclick="deleteTrade({trade['id']})" title="Delete Trade">
                         <i class="fas fa-trash"></i>
                     </button>
                 </td>
@@ -455,13 +534,19 @@ st.markdown("""
 st.markdown("""
 <script>
 function deleteTrade(tradeId) {
-    if (confirm('Are you sure you want to delete this trade?')) {
+    if (confirm('Are you sure you want to delete trade ' + tradeId + '?')) {
         // This would communicate with Streamlit in a real implementation
-        alert('Trade deletion functionality would be implemented with proper backend communication.');
+        window.location.href = window.location.href + '?delete_trade=' + tradeId;
     }
 }
 </script>
 """, unsafe_allow_html=True)
+
+# Handle trade deletion from URL parameter
+query_params = st.experimental_get_query_params()
+if 'delete_trade' in query_params:
+    trade_id = int(query_params['delete_trade'][0])
+    delete_trade(trade_id)
 
 # Add Font Awesome
 st.markdown('<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">', unsafe_allow_html=True)
