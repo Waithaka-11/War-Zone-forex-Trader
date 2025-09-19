@@ -3,8 +3,6 @@ import pandas as pd
 from datetime import datetime
 import gspread
 from google.oauth2.service_account import Credentials
-from df2gspread import df2gspread as d2g
-from gspread_dataframe import set_with_dataframe
 import math
 
 # Page config
@@ -185,7 +183,7 @@ def setup_google_sheets():
             creds_dict = dict(st.secrets['gcp_service_account'])
             creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
         else:
-            st.error("Google Sheets credentials not found. Please add them to Streamlit secrets.")
+            st.warning("Google Sheets credentials not found. Using local storage only.")
             return None
         
         # Authorize the client
@@ -214,7 +212,7 @@ def setup_google_sheets():
         return spreadsheet
     
     except Exception as e:
-        st.error(f"Error setting up Google Sheets: {e}")
+        st.warning(f"Google Sheets setup failed: {e}. Using local storage.")
         return None
 
 # Load data from Google Sheets
@@ -248,7 +246,7 @@ def load_data_from_sheets(spreadsheet):
         return trades
     
     except Exception as e:
-        st.error(f"Error loading data from Google Sheets: {e}")
+        st.warning(f"Error loading data from Google Sheets: {e}")
         return []
 
 # Save data to Google Sheets
@@ -283,7 +281,7 @@ def save_data_to_sheets(spreadsheet, trades):
         return True
     
     except Exception as e:
-        st.error(f"Error saving data to Google Sheets: {e}")
+        st.warning(f"Error saving data to Google Sheets: {e}")
         return False
 
 # Initialize session state and Google Sheets
@@ -319,6 +317,8 @@ def delete_trade(trade_id):
             st.success("Trade deleted successfully!")
         else:
             st.error("Error saving to Google Sheets")
+    else:
+        st.success("Trade deleted from local storage!")
     st.rerun()
 
 # Main container
@@ -399,40 +399,37 @@ with st.container():
         st.markdown('<div class="card-header"><i class="fas fa-table me-2"></i>Trading History</div>', unsafe_allow_html=True)
         
         if st.session_state.trades:
-            # Convert to DataFrame for display
-            df = pd.DataFrame(st.session_state.trades)
+            # Create a DataFrame for display
+            display_data = []
+            for trade in st.session_state.trades:
+                display_data.append({
+                    'Date': trade['date'],
+                    'Trader': trade['trader'],
+                    'Instrument': trade['instrument'],
+                    'Entry': f"{trade['entry']:.5f}",
+                    'SL': f"{trade['sl']:.5f}",
+                    'Target': f"{trade['target']:.5f}",
+                    'Risk': f"{trade['risk']:.5f}",
+                    'Reward': f"{trade['reward']:.5f}",
+                    'R/R Ratio': f"{trade['rr_ratio']:.2f}",
+                    'Outcome': trade['outcome'],
+                    'Result': f'<span class="badge-{trade["result"].lower()}">{trade["result"]}</span>',
+                    'Actions': f"""
+                        <button onclick="window.deleteTrade({trade['id']})" style="
+                            background-color: #e74c3c;
+                            color: white;
+                            border: none;
+                            border-radius: 4px;
+                            padding: 4px 8px;
+                            cursor: pointer;
+                        ">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    """
+                })
             
-            # Format the display
-            display_df = df.copy()
-            display_df['entry'] = display_df['entry'].apply(lambda x: f"{x:.5f}")
-            display_df['sl'] = display_df['sl'].apply(lambda x: f"{x:.5f}")
-            display_df['target'] = display_df['target'].apply(lambda x: f"{x:.5f}")
-            display_df['risk'] = display_df['risk'].apply(lambda x: f"{x:.5f}")
-            display_df['reward'] = display_df['reward'].apply(lambda x: f"{x:.5f}")
-            display_df['rr_ratio'] = display_df['rr_ratio'].apply(lambda x: f"{x:.2f}")
-            
-            # Add actions column with delete buttons
-            display_df['Actions'] = display_df['id'].apply(lambda x: f"""
-                <button onclick="window.deleteTrade({x})" style="
-                    background-color: #e74c3c;
-                    color: white;
-                    border: none;
-                    border-radius: 4px;
-                    padding: 4px 8px;
-                    cursor: pointer;
-                ">
-                    <i class="fas fa-trash"></i>
-                </button>
-            """)
-            
-            # Format result as badges
-            display_df['result'] = display_df['result'].apply(
-                lambda x: f'<span class="badge-{x.lower()}">{x}</span>'
-            )
-            
-            # Reorder columns
-            display_df = display_df[['date', 'trader', 'instrument', 'entry', 'sl', 'target', 
-                                   'risk', 'reward', 'rr_ratio', 'outcome', 'result', 'Actions']]
+            # Convert to DataFrame
+            display_df = pd.DataFrame(display_data)
             
             # Display the table
             st.markdown(display_df.to_html(escape=False, index=False), unsafe_allow_html=True)
