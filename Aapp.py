@@ -1,503 +1,458 @@
-import streamlit as st
-import pandas as pd
-from datetime import datetime
-import gspread
-from google.oauth2.service_account import Credentials
+import React, { useState } from 'react';
+import { ChevronDown, Home, Clock, Settings, Plus, Trophy, Award, BarChart3, Table, PieChart, Trash2 } from 'lucide-react';
 
-# Page config
-st.set_page_config(
-    page_title="Forex Trading Analytics",
-    page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+const ForexTradingAnalytics = () => {
+  const [selectedInstrument, setSelectedInstrument] = useState('');
+  const [trades, setTrades] = useState([
+    { id: 1, date: '2023-10-08', trader: 'Waithaka', instrument: 'XAUUSD', entry: 1820.50, sl: 1815.00, target: 1830.00, risk: 5.50, reward: 9.50, rrRatio: 1.73, outcome: 'Target Hit', result: 'Win' },
+    { id: 2, date: '2023-10-07', trader: 'Wallace', instrument: 'USOIL', entry: 89.30, sl: 88.50, target: 91.00, risk: 0.80, reward: 1.70, rrRatio: 2.13, outcome: 'SL Hit', result: 'Loss' },
+    { id: 3, date: '2023-10-06', trader: 'Max', instrument: 'BTCUSD', entry: 27450.00, sl: 27200.00, target: 27800.00, risk: 250.00, reward: 350.00, rrRatio: 1.40, outcome: 'Target Hit', result: 'Win' },
+    { id: 4, date: '2023-10-05', trader: 'Waithaka', instrument: 'EURUSD', entry: 1.06250, sl: 1.06000, target: 1.06700, risk: 0.00250, reward: 0.00450, rrRatio: 1.80, outcome: 'Target Hit', result: 'Win' }
+  ]);
 
-# Custom CSS - IMPROVED VERSION
-st.markdown("""
-<style>
-    /* Main styles */
-    .stApp {
-        background-color: #f8f9fa;
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    }
-    
-    /* Header Section - Dark Blue Background */
-    .header {
-        background-color: #2c3e50;
-        color: white;
-        padding: 15px 0;
-        margin-bottom: 20px;
-    }
-    
-    .header-title {
-        font-size: 24px;
-        font-weight: 700;
-        color: white;
-        margin: 0;
-    }
-    
-    .nav-buttons {
-        display: flex;
-        gap: 15px;
-    }
-    
-    .nav-btn {
-        background: none;
-        border: none;
-        color: rgba(255, 255, 255, 0.8);
-        font-size: 16px;
-        cursor: pointer;
-        padding: 8px 15px;
-        border-radius: 5px;
-        transition: all 0.3s;
-    }
-    
-    .nav-btn:hover {
-        color: white;
-        background-color: rgba(255, 255, 255, 0.1);
-    }
-    
-    /* Card styles */
-    .card {
-        background-color: white;
-        border-radius: 10px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-        margin-bottom: 20px;
-        border: none;
-    }
-    
-    .card-header {
-        background-color: #2c3e50;
-        color: white;
-        border-radius: 10px 10px 0 0;
-        padding: 12px 20px;
-        font-weight: 600;
-        font-size: 18px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-    
-    .dropdown-arrow {
-        cursor: pointer;
-        transition: transform 0.3s;
-    }
-    
-    /* IMPROVED FORM LAYOUT */
-    .form-container {
-        padding: 20px;
-    }
-    
-    .form-row {
-        display: grid;
-        grid-template-columns: 1fr 1fr 1fr 1fr;
-        gap: 20px;
-        margin-bottom: 20px;
-        align-items: end;
-    }
-    
-    .form-row:last-child {
-        margin-bottom: 0;
-    }
-    
-    .form-group {
-        display: flex;
-        flex-direction: column;
-    }
-    
-    .form-label {
-        display: block;
-        margin-bottom: 8px;
-        font-weight: 600;
-        color: #2c3e50;
-        font-size: 14px;
-    }
-    
-    .form-select, .form-input {
-        width: 100%;
-        padding: 12px;
-        border: 1px solid #ced4da;
-        border-radius: 6px;
-        font-size: 14px;
-        background-color: white;
-        transition: border-color 0.3s, box-shadow 0.3s;
-    }
-    
-    .form-select:focus, .form-input:focus {
-        outline: none;
-        border-color: #3498db;
-        box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
-    }
-    
-    /* Suggestion pills - IMPROVED */
-    .suggestions-container {
-        position: relative;
-    }
-    
-    .suggestion-pills {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        margin-top: 8px;
-    }
-    
-    .suggestion-pill {
-        background-color: #3498db;
-        color: white;
-        padding: 4px 10px;
-        border-radius: 15px;
-        font-size: 12px;
-        cursor: pointer;
-        transition: background-color 0.3s;
-        font-weight: 500;
-    }
-    
-    .suggestion-pill:hover {
-        background-color: #2980b9;
-    }
-    
-    /* IMPROVED BUTTON */
-    .btn-add-trade {
-        background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
-        color: white;
-        border: none;
-        padding: 12px 24px;
-        border-radius: 6px;
-        font-weight: 600;
-        cursor: pointer;
-        font-size: 14px;
-        transition: all 0.3s;
-        box-shadow: 0 2px 4px rgba(52, 152, 219, 0.3);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-    }
-    
-    .btn-add-trade:hover {
-        background: linear-gradient(135deg, #2980b9 0%, #1c5a85 100%);
-        transform: translateY(-1px);
-        box-shadow: 0 4px 8px rgba(52, 152, 219, 0.4);
-    }
-    
-    .btn-add-trade:active {
-        transform: translateY(0);
-    }
-    
-    /* Table styles */
-    .trading-table {
-        width: 100%;
-        border-collapse: collapse;
-    }
-    
-    .trading-table th {
-        background-color: #34495e;
-        color: white;
-        padding: 12px 8px;
-        font-weight: 600;
-        text-align: left;
-    }
-    
-    .trading-table td {
-        padding: 10px 8px;
-        border-bottom: 1px solid #e9ecef;
-    }
-    
-    /* Badge styles */
-    .badge-win {
-        background-color: #28a745;
-        color: white;
-        padding: 4px 8px;
-        border-radius: 12px;
-        font-size: 12px;
-        font-weight: 600;
-    }
-    
-    .badge-loss {
-        background-color: #dc3545;
-        color: white;
-        padding: 4px 8px;
-        border-radius: 12px;
-        font-size: 12px;
-        font-weight: 600;
-    }
-    
-    /* Trader rankings */
-    .trader-rank {
-        display: flex;
-        align-items: center;
-        padding: 15px;
-        border-bottom: 1px solid #e9ecef;
-    }
-    
-    .rank-badge {
-        width: 30px;
-        height: 30px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: bold;
-        margin-right: 15px;
-    }
-    
-    .rank-1 { background-color: #ffd700; color: black; }
-    .rank-2 { background-color: #c0c0c0; color: black; }
-    .rank-3 { background-color: #cd7f32; color: black; }
-    
-    .progress-bar {
-        height: 8px;
-        background-color: #e9ecef;
-        border-radius: 4px;
-        margin: 5px 0;
-        overflow: hidden;
-    }
-    
-    .progress-fill {
-        height: 100%;
-        background-color: #28a745;
-        border-radius: 4px;
-    }
-    
-    /* Stats boxes */
-    .stats-box {
-        text-align: center;
-        padding: 20px;
-        border-radius: 8px;
-        margin-bottom: 15px;
-    }
-    
-    .stats-box h6 {
-        font-size: 0.9rem;
-        color: #7f8c8d;
-        margin: 0;
-    }
-    
-    .stats-box h3 {
-        font-weight: 700;
-        color: #2c3e50;
-        margin: 5px 0 0 0;
-    }
-    
-    .positive {
-        background-color: rgba(46, 204, 113, 0.15);
-    }
-    
-    /* Trader of the month */
-    .trader-of-month {
-        text-align: center;
-        padding: 20px;
-    }
-    
-    .trophy {
-        font-size: 48px;
-        color: #ffd700;
-        margin-bottom: 10px;
-    }
-    
-    /* Delete button */
-    .delete-btn {
-        background: none;
-        border: none;
-        color: #dc3545;
-        cursor: pointer;
-        font-size: 16px;
-        padding: 4px;
-        border-radius: 4px;
-        transition: background-color 0.3s;
-    }
-    
-    .delete-btn:hover {
-        background-color: rgba(220, 53, 69, 0.1);
-    }
-    
-    /* Chart placeholder */
-    .chart-placeholder {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        height: 250px;
-        border-radius: 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        font-weight: 600;
-    }
-    
-    /* Performance grid */
-    .performance-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 10px;
-        margin-top: 15px;
-    }
-    
-    .performance-cell {
-        background-color: #f8f9fa;
-        padding: 10px;
-        border-radius: 5px;
-        text-align: center;
-    }
-    
-    .performance-bar {
-        height: 6px;
-        background-color: #e9ecef;
-        border-radius: 3px;
-        margin-top: 5px;
-        overflow: hidden;
-    }
-    
-    .bar-fill {
-        height: 100%;
-        border-radius: 3px;
-    }
-    
-    .good { background-color: #28a745; }
-    .medium { background-color: #ffc107; }
-    .poor { background-color: #dc3545; }
-    
-    /* Responsive design */
-    @media (max-width: 768px) {
-        .form-row {
-            grid-template-columns: 1fr;
-            gap: 15px;
-        }
-        
-        .header-title {
-            font-size: 18px;
-        }
-        
-        .nav-buttons {
-            flex-direction: column;
-            gap: 8px;
-        }
-    }
-</style>
-""", unsafe_allow_html=True)
+  const instrumentPairs = ['XAUUSD', 'USDOIL', 'BTCUSD', 'USTECH', 'EURUSD', 'GBPUSD', 'AUDUSD', 'USDJPY', 'USDCAD', 'NZDUSD'];
 
-# Initialize session state with sample data
-if 'trades' not in st.session_state:
-    st.session_state.trades = [
-        {
-            'id': 1, 'date': '2023-10-05', 'trader': 'Waithaka', 'instrument': 'XAUUSD',
-            'entry': 1820.50, 'sl': 1815.00, 'target': 1830.00, 'risk': 5.50, 'reward': 9.50,
-            'rr_ratio': 1.73, 'outcome': 'Target Hit', 'result': 'Win'
-        },
-        {
-            'id': 2, 'date': '2023-10-04', 'trader': 'Wallace', 'instrument': 'USOIL',
-            'entry': 89.30, 'sl': 88.50, 'target': 91.00, 'risk': 0.80, 'reward': 1.70,
-            'rr_ratio': 2.13, 'outcome': 'SL Hit', 'result': 'Loss'
-        },
-        {
-            'id': 3, 'date': '2023-10-03', 'trader': 'Max', 'instrument': 'BTCUSD',
-            'entry': 27450.00, 'sl': 27200.00, 'target': 27800.00, 'risk': 250.00, 'reward': 350.00,
-            'rr_ratio': 1.40, 'outcome': 'Target Hit', 'result': 'Win'
-        },
-        {
-            'id': 4, 'date': '2023-10-02', 'trader': 'Waithaka', 'instrument': 'EURUSD',
-            'entry': 1.06250, 'sl': 1.06000, 'target': 1.06700, 'risk': 0.00250, 'reward': 0.00450,
-            'rr_ratio': 1.80, 'outcome': 'Target Hit', 'result': 'Win'
-        }
-    ]
+  const deleteTrade = (id) => {
+    setTrades(trades.filter(trade => trade.id !== id));
+  };
 
-# Header Section
-st.markdown("""
-<div class="header">
-    <div style="display: flex; justify-content: space-between; align-items: center; max-width: 1200px; margin: 0 auto; padding: 0 20px;">
-        <div style="display: flex; align-items: center;">
-            <h1 class="header-title"><i class="fas fa-chart-line" style="margin-right: 10px;"></i>Forex Trading Analytics</h1>
+  const handleInstrumentSelect = (instrument) => {
+    setSelectedInstrument(instrument);
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-100">
+      {/* Header */}
+      <div className="bg-slate-700 text-white px-6 py-4">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center">
+            <BarChart3 className="mr-3 h-6 w-6" />
+            <h1 className="text-xl font-bold">Forex Trading Analytics</h1>
+          </div>
+          <div className="flex space-x-4">
+            <button className="flex items-center px-3 py-2 text-sm hover:bg-slate-600 rounded">
+              <Home className="mr-2 h-4 w-4" />
+              Dashboard
+            </button>
+            <button className="flex items-center px-3 py-2 text-sm hover:bg-slate-600 rounded">
+              <Clock className="mr-2 h-4 w-4" />
+              History
+            </button>
+            <button className="flex items-center px-3 py-2 text-sm hover:bg-slate-600 rounded">
+              <Settings className="mr-2 h-4 w-4" />
+              Settings
+            </button>
+          </div>
         </div>
-        <div class="nav-buttons">
-            <button class="nav-btn"><i class="fas fa-home" style="margin-right: 5px;"></i>Dashboard</button>
-            <button class="nav-btn"><i class="fas fa-history" style="margin-right: 5px;"></i>History</button>
-            <button class="nav-btn"><i class="fas fa-cog" style="margin-right: 5px;"></i>Settings</button>
-        </div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
+      </div>
 
-# Main container
-st.markdown('<div style="max-width: 1200px; margin: 0 auto; padding: 0 20px;">', unsafe_allow_html=True)
-
-# IMPROVED Add New Trade Section
-st.markdown("""
-<div class="card">
-    <div class="card-header">
-        <div>
-            <i class="fas fa-plus-circle" style="margin-right: 8px;"></i>Add New Trade
-        </div>
-        <span class="dropdown-arrow">▼</span>
-    </div>
-    <div class="form-container">
-        <!-- First Row: Trader, Instrument, Date, Outcome -->
-        <div class="form-row">
-            <div class="form-group">
-                <label class="form-label">Trader</label>
-                <select class="form-select">
-                    <option>Select Trader</option>
-                    <option>Waithaka</option>
-                    <option>Wallace</option>
-                    <option>Max</option>
-                </select>
+      <div className="p-6 max-w-7xl mx-auto">
+        {/* Add New Trade Section */}
+        <div className="bg-white rounded-lg shadow-md mb-6">
+          <div className="bg-slate-700 text-white px-4 py-3 rounded-t-lg flex justify-between items-center">
+            <div className="flex items-center">
+              <div className="bg-teal-600 rounded-full p-1 mr-3">
+                <Plus className="h-4 w-4" />
+              </div>
+              <span className="font-semibold">Add New Trade</span>
             </div>
-            
-            <div class="form-group">
-                <label class="form-label">Instrument</label>
-                <div class="suggestions-container">
-                    <input type="text" class="form-input" placeholder="Enter Instrument">
-                    <div class="suggestion-pills">
-                        <span class="suggestion-pill">XAUUSD</span>
-                        <span class="suggestion-pill">USDOIL</span>
-                        <span class="suggestion-pill">BTCUSD</span>
-                        <span class="suggestion-pill">USTECH</span>
-                    </div>
+            <ChevronDown className="h-4 w-4" />
+          </div>
+          
+          <div className="p-6">
+            {/* First Row */}
+            <div className="grid grid-cols-4 gap-6 mb-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Trader</label>
+                <select className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white">
+                  <option>Select Trader</option>
+                  <option>Waithaka</option>
+                  <option>Wallace</option>
+                  <option>Max</option>
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Instrument</label>
+                <input 
+                  type="text" 
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  placeholder="Enter Instrument"
+                  value={selectedInstrument}
+                  onChange={(e) => setSelectedInstrument(e.target.value)}
+                />
+                <div className="flex gap-2 mt-2 flex-wrap">
+                  {instrumentPairs.map(pair => (
+                    <span 
+                      key={pair}
+                      className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full cursor-pointer hover:bg-blue-200 transition-colors"
+                      onClick={() => handleInstrumentSelect(pair)}
+                    >
+                      {pair}
+                    </span>
+                  ))}
                 </div>
-            </div>
-            
-            <div class="form-group">
-                <label class="form-label">Date</label>
-                <input type="date" class="form-input" value="2025-09-19">
-            </div>
-            
-            <div class="form-group">
-                <label class="form-label">Outcome</label>
-                <select class="form-select">
-                    <option>Select Outcome</option>
-                    <option>Target Hit</option>
-                    <option>SL Hit</option>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Date</label>
+                <input 
+                  type="text" 
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  value="09/19/2025"
+                  readOnly
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Outcome</label>
+                <select className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white">
+                  <option>Select Outcome</option>
+                  <option>Target Hit</option>
+                  <option>SL Hit</option>
                 </select>
+              </div>
             </div>
-        </div>
-        
-        <!-- Second Row: Entry Price, Stop Loss, Target Price, Add Button -->
-        <div class="form-row">
-            <div class="form-group">
-                <label class="form-label">Entry Price</label>
-                <input type="number" class="form-input" placeholder="0.00" step="0.01">
-            </div>
-            
-            <div class="form-group">
-                <label class="form-label">Stop Loss (SL)</label>
-                <input type="number" class="form-input" placeholder="0.00" step="0.01">
-            </div>
-            
-            <div class="form-group">
-                <label class="form-label">Target Price</label>
-                <input type="number" class="form-input" placeholder="0.00" step="0.01">
-            </div>
-            
-            <div class="form-group">
-                <button class="btn-add-trade">
-                    <i class="fas fa-plus"></i>
-                    Add Trade
+
+            {/* Second Row */}
+            <div className="grid grid-cols-4 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Entry Price</label>
+                <input 
+                  type="number" 
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  placeholder="0.00"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Stop Loss (SL)</label>
+                <input 
+                  type="number" 
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  placeholder="0.00"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Target Price</label>
+                <input 
+                  type="number" 
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  placeholder="0.00"
+                />
+              </div>
+              
+              <div className="flex items-end">
+                <button className="w-full bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md flex items-center justify-center">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Trade
                 </button>
+              </div>
             </div>
+          </div>
         </div>
+
+        {/* Main Content */}
+        <div className="grid grid-cols-3 gap-6">
+          {/* Left Column - 2/3 width */}
+          <div className="col-span-2 space-y-6">
+            {/* Trader Performance Rankings */}
+            <div className="bg-white rounded-lg shadow-md">
+              <div className="bg-slate-700 text-white px-4 py-3 rounded-t-lg">
+                <h3 className="font-semibold">Trader Performance Rankings</h3>
+              </div>
+              <div className="p-6">
+                {/* Waithaka - Rank 1 */}
+                <div className="flex items-center mb-6">
+                  <div className="bg-yellow-400 text-black font-bold w-8 h-8 rounded-full flex items-center justify-center mr-4">1</div>
+                  <div className="flex-1">
+                    <div className="flex justify-between items-start mb-1">
+                      <span className="font-semibold text-gray-800">Waithaka</span>
+                      <span className="text-sm font-medium">Win Rate: 72.5%</span>
+                    </div>
+                    <div className="text-xs text-gray-600 mb-2">Total Trades: 18</div>
+                    <div className="w-full bg-gray-200 rounded-full h-2 mb-1">
+                      <div className="bg-green-500 h-2 rounded-full" style={{width: '72.5%'}}></div>
+                    </div>
+                    <div className="text-xs text-gray-600">Wins: 13 | Losses: 5</div>
+                  </div>
+                </div>
+
+                {/* Max - Rank 2 */}
+                <div className="flex items-center mb-6">
+                  <div className="bg-gray-400 text-black font-bold w-8 h-8 rounded-full flex items-center justify-center mr-4">2</div>
+                  <div className="flex-1">
+                    <div className="flex justify-between items-start mb-1">
+                      <span className="font-semibold text-gray-800">Max</span>
+                      <span className="text-sm font-medium">Win Rate: 65.3%</span>
+                    </div>
+                    <div className="text-xs text-gray-600 mb-2">Total Trades: 15</div>
+                    <div className="w-full bg-gray-200 rounded-full h-2 mb-1">
+                      <div className="bg-green-500 h-2 rounded-full" style={{width: '65.3%'}}></div>
+                    </div>
+                    <div className="text-xs text-gray-600">Wins: 10 | Losses: 5</div>
+                  </div>
+                </div>
+
+                {/* Wallace - Rank 3 */}
+                <div className="flex items-center">
+                  <div className="bg-orange-400 text-black font-bold w-8 h-8 rounded-full flex items-center justify-center mr-4">3</div>
+                  <div className="flex-1">
+                    <div className="flex justify-between items-start mb-1">
+                      <span className="font-semibold text-gray-800">Wallace</span>
+                      <span className="text-sm font-medium">Win Rate: 58.7%</span>
+                    </div>
+                    <div className="text-xs text-gray-600 mb-2">Total Trades: 16</div>
+                    <div className="w-full bg-gray-200 rounded-full h-2 mb-1">
+                      <div className="bg-green-500 h-2 rounded-full" style={{width: '58.7%'}}></div>
+                    </div>
+                    <div className="text-xs text-gray-600">Wins: 9 | Losses: 7</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Trading History */}
+            <div className="bg-white rounded-lg shadow-md">
+              <div className="bg-slate-700 text-white px-4 py-3 rounded-t-lg flex items-center">
+                <Table className="mr-2 h-4 w-4" />
+                <h3 className="font-semibold">Trading History</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-slate-600 text-white">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium">Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium">Trader</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium">Instrument</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium">Entry</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium">SL</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium">Target</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium">Risk</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium">Reward</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium">R/R Ratio</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium">Outcome</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium">Result</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {trades.map((trade) => (
+                      <tr key={trade.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm">{trade.date}</td>
+                        <td className="px-4 py-3 text-sm">{trade.trader}</td>
+                        <td className="px-4 py-3 text-sm">{trade.instrument}</td>
+                        <td className="px-4 py-3 text-sm">{trade.entry}</td>
+                        <td className="px-4 py-3 text-sm">{trade.sl}</td>
+                        <td className="px-4 py-3 text-sm">{trade.target}</td>
+                        <td className="px-4 py-3 text-sm">{trade.risk}</td>
+                        <td className="px-4 py-3 text-sm">{trade.reward}</td>
+                        <td className="px-4 py-3 text-sm">{trade.rrRatio}</td>
+                        <td className="px-4 py-3 text-sm">{trade.outcome}</td>
+                        <td className="px-4 py-3 text-sm">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            trade.result === 'Win' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                          }`}>
+                            {trade.result}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm">
+                          <button 
+                            onClick={() => deleteTrade(trade.id)}
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1 rounded transition-colors"
+                            title="Delete trade"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column - 1/3 width */}
+          <div className="space-y-6">
+            {/* Performance Metrics */}
+            <div className="bg-white rounded-lg shadow-md">
+              <div className="bg-slate-700 text-white px-4 py-3 rounded-t-lg flex items-center">
+                <PieChart className="mr-2 h-4 w-4" />
+                <h3 className="font-semibold">Performance Metrics</h3>
+              </div>
+              <div className="p-6">
+                <div className="bg-slate-600 text-white px-3 py-2 rounded-t text-sm font-medium">
+                  Overall Win Rate Distribution
+                </div>
+                <div className="p-4 bg-gray-50 rounded-b">
+                  {/* Enhanced Donut Chart with 3 Distinctive Colors */}
+                  <div className="w-48 h-48 mx-auto mb-4 relative">
+                    <svg viewBox="0 0 100 100" className="w-full h-full transform -rotate-90">
+                      {/* Background circle */}
+                      <circle cx="50" cy="50" r="35" fill="none" stroke="#f3f4f6" strokeWidth="12"/>
+                      
+                      {/* Waithaka - 37.1% of total - Blue (largest individual segment) */}
+                      <circle 
+                        cx="50" 
+                        cy="50" 
+                        r="35" 
+                        fill="none" 
+                        stroke="#3b82f6" 
+                        strokeWidth="12" 
+                        strokeDasharray="81.6 138.4" 
+                        strokeDashoffset="0"
+                        className="transition-all duration-500"
+                      />
+                      
+                      {/* Max - 33.5% of total - Black (middle segment) */}
+                      <circle 
+                        cx="50" 
+                        cy="50" 
+                        r="35" 
+                        fill="none" 
+                        stroke="#000000" 
+                        strokeWidth="12" 
+                        strokeDasharray="73.7 146.3" 
+                        strokeDashoffset="-81.6"
+                        className="transition-all duration-500"
+                      />
+                      
+                      {/* Wallace - 29.4% of total - Yellow (smallest segment) */}
+                      <circle 
+                        cx="50" 
+                        cy="50" 
+                        r="35" 
+                        fill="none" 
+                        stroke="#eab308" 
+                        strokeWidth="12" 
+                        strokeDasharray="64.7 155.3" 
+                        strokeDashoffset="-155.3"
+                        className="transition-all duration-500"
+                      />
+                    </svg>
+                    {/* Center text */}
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="text-xl font-bold text-gray-700">65.5%</div>
+                        <div className="text-xs text-gray-500">Avg Rate</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center">
+                        <div className="w-3 h-3 bg-orange-500 rounded mr-2"></div>
+                        <span>Waithaka</span>
+                      </div>
+                      <span className="font-semibold">72.5%</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center">
+                        <div className="w-3 h-3 bg-blue-500 rounded mr-2"></div>
+                        <span>Max</span>
+                      </div>
+                      <span className="font-semibold">65.3%</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center">
+                        <div className="w-3 h-3 bg-gray-400 rounded mr-2"></div>
+                        <span>Wallace</span>
+                      </div>
+                      <span className="font-semibold">56.7%</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Trader of the Month */}
+            <div className="bg-white rounded-lg shadow-md">
+              <div className="bg-slate-700 text-white px-4 py-3 rounded-t-lg flex items-center">
+                <Award className="mr-2 h-4 w-4" />
+                <h3 className="font-semibold">Trader of the Month</h3>
+              </div>
+              <div className="p-6 text-center">
+                <div className="text-6xl mb-4">🏆</div>
+                <h4 className="text-xl font-bold text-gray-800 mb-2">Waithaka</h4>
+                <p className="text-gray-600 text-sm mb-4">Best performance with 72.5% win rate</p>
+                <div className="bg-green-100 rounded-lg p-4">
+                  <div className="text-xs text-gray-600 uppercase tracking-wide">WIN RATE THIS MONTH</div>
+                  <div className="text-2xl font-bold text-green-700">72.5%</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Instrument Performance by Trader */}
+            <div className="bg-white rounded-lg shadow-md">
+              <div className="bg-slate-700 text-white px-4 py-3 rounded-t-lg flex items-center">
+                <BarChart3 className="mr-2 h-4 w-4" />
+                <h3 className="font-semibold">Instrument Performance by Trader</h3>
+              </div>
+              <div className="p-4">
+                <div className="grid grid-cols-4 gap-1 text-xs">
+                  {/* Header */}
+                  <div className="bg-slate-600 text-white font-semibold text-center p-3 rounded">Instrument</div>
+                  <div className="bg-slate-600 text-white font-semibold text-center p-3 rounded">Waithaka</div>
+                  <div className="bg-slate-600 text-white font-semibold text-center p-3 rounded">Wallace</div>
+                  <div className="bg-slate-600 text-white font-semibold text-center p-3 rounded">Max</div>
+                  
+                  {/* XAUUSD */}
+                  <div className="text-center p-3 font-medium bg-gray-100 rounded">XAUUSD</div>
+                  <div className="p-2 flex items-center justify-center">
+                    <div className="bg-green-500 text-white px-2 py-1 rounded text-xs font-semibold">75%</div>
+                  </div>
+                  <div className="p-2 flex items-center justify-center">
+                    <div className="bg-green-500 text-white px-2 py-1 rounded text-xs font-semibold">60%</div>
+                  </div>
+                  <div className="p-2 flex items-center justify-center">
+                    <div className="bg-gray-400 text-white px-2 py-1 rounded text-xs font-semibold">-</div>
+                  </div>
+                  
+                  {/* USOIL */}
+                  <div className="text-center p-3 font-medium bg-gray-100 rounded">USOIL</div>
+                  <div className="p-2 flex items-center justify-center">
+                    <div className="bg-green-500 text-white px-2 py-1 rounded text-xs font-semibold">80%</div>
+                  </div>
+                  <div className="p-2 flex items-center justify-center">
+                    <div className="bg-yellow-500 text-white px-2 py-1 rounded text-xs font-semibold">50%</div>
+                  </div>
+                  <div className="p-2 flex items-center justify-center">
+                    <div className="bg-gray-400 text-white px-2 py-1 rounded text-xs font-semibold">-</div>
+                  </div>
+                  
+                  {/* BTCUSD */}
+                  <div className="text-center p-3 font-medium bg-gray-100 rounded">BTCUSD</div>
+                  <div className="p-2 flex items-center justify-center">
+                    <div className="bg-yellow-500 text-white px-2 py-1 rounded text-xs font-semibold">55%</div>
+                  </div>
+                  <div className="p-2 flex items-center justify-center">
+                    <div className="bg-gray-400 text-white px-2 py-1 rounded text-xs font-semibold">-</div>
+                  </div>
+                  <div className="p-2 flex items-center justify-center">
+                    <div className="bg-green-500 text-white px-2 py-1 rounded text-xs font-semibold">65%</div>
+                  </div>
+                  
+                  {/* USTECH */}
+                  <div className="text-center p-3 font-medium bg-gray-100 rounded">USTECH</div>
+                  <div className="p-2 flex items-center justify-center">
+                    <div className="bg-green-500 text-white px-2 py-1 rounded text-xs font-semibold">70%</div>
+                  </div>
+                  <div className="p-2 flex items-center justify-center">
+                    <div className="bg-red-500 text-white px-2 py-1 rounded text-xs font-semibold">40%</div>
+                  </div>
+                  <div className="p-2 flex items-center justify-center">
+                    <div className="bg-gray-400 text-white px-2 py-1 rounded text-xs font-semibold">-</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
-</div>
-""", unsafe_allow_html=True)
+  );
+};
 
-# Rest of your existing code continues here...
-# (Main Content Area with columns, trader rankings, trading history table, etc.)
-
-# Add Font Awesome
-st.markdown('<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">', unsafe_allow_html=True)
+export default ForexTradingAnalytics;
