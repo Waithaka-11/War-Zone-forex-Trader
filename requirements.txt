@@ -1,0 +1,1 @@
+streamlit gspread google-auth pandas altair
