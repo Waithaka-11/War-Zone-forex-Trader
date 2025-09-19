@@ -1,244 +1,340 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime
+import plotly.express as px
+from datetime import datetime, date
+import numpy as np
 
 # Page configuration
 st.set_page_config(
     page_title="Forex Trading Analytics",
-    page_icon="📊",
-    layout="wide"
+    page_icon="📈",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 # Custom CSS
 st.markdown("""
 <style>
     .main-header {
-        font-size: 2rem;
-        font-weight: bold;
+        background-color: #475569;
         color: white;
-        background-color: #334155;
         padding: 1rem;
         border-radius: 0.5rem;
-        margin-bottom: 1rem;
+        margin-bottom: 2rem;
     }
     .metric-card {
         background-color: white;
         padding: 1rem;
         border-radius: 0.5rem;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        margin-bottom: 1rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
-    .section-header {
-        background-color: #334155;
-        color: white;
-        padding: 0.5rem 1rem;
-        border-radius: 0.5rem 0.5rem 0 0;
-        font-weight: bold;
+    .trader-rank {
+        display: flex;
+        align-items: center;
+        padding: 0.5rem;
+        margin-bottom: 0.5rem;
+        background-color: #f8fafc;
+        border-radius: 0.5rem;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Sample data
-trades_data = [
-    {'id': 1, 'date': '2023-10-08', 'trader': 'Waithaka', 'instrument': 'XAUUSD', 'entry': 1820.50, 
-     'sl': 1815.00, 'target': 1830.00, 'risk': 5.50, 'reward': 9.50, 'rrRatio': 1.73, 
-     'outcome': 'Target Hit', 'result': 'Win'},
-    {'id': 2, 'date': '2023-10-07', 'trader': 'Wallace', 'instrument': 'USOIL', 'entry': 89.30, 
-     'sl': 88.50, 'target': 91.00, 'risk': 0.80, 'reward': 1.70, 'rrRatio': 2.13, 
-     'outcome': 'SL Hit', 'result': 'Loss'},
-    {'id': 3, 'date': '2023-10-06', 'trader': 'Max', 'instrument': 'BTCUSD', 'entry': 27450.00, 
-     'sl': 27200.00, 'target': 27800.00, 'risk': 250.00, 'reward': 350.00, 'rrRatio': 1.40, 
-     'outcome': 'Target Hit', 'result': 'Win'},
-    {'id': 4, 'date': '2023-10-05', 'trader': 'Waithaka', 'instrument': 'EURUSD', 'entry': 1.06250, 
-     'sl': 1.06000, 'target': 1.06700, 'risk': 0.00250, 'reward': 0.00450, 'rrRatio': 1.80, 
-     'outcome': 'Target Hit', 'result': 'Win'}
-]
-
-instrument_pairs = ['XAUUSD', 'USDOIL', 'BTCUSD', 'USTECH', 'EURUSD', 'GBPUSD', 'AUDUSD', 'USDJPY', 'USDCAD', 'NZDUSD']
-
-# Initialize session state
+# Initialize session state for trades
 if 'trades' not in st.session_state:
-    st.session_state.trades = trades_data
-
-if 'selected_instrument' not in st.session_state:
-    st.session_state.selected_instrument = ''
+    st.session_state.trades = [
+        {
+            'id': 1, 'date': '2023-10-08', 'trader': 'Waithaka', 'instrument': 'XAUUSD',
+            'entry': 1820.50, 'sl': 1815.00, 'target': 1830.00, 'risk': 5.50,
+            'reward': 9.50, 'rr_ratio': 1.73, 'outcome': 'Target Hit', 'result': 'Win'
+        },
+        {
+            'id': 2, 'date': '2023-10-07', 'trader': 'Wallace', 'instrument': 'USOIL',
+            'entry': 89.30, 'sl': 88.50, 'target': 91.00, 'risk': 0.80,
+            'reward': 1.70, 'rr_ratio': 2.13, 'outcome': 'SL Hit', 'result': 'Loss'
+        },
+        {
+            'id': 3, 'date': '2023-10-06', 'trader': 'Max', 'instrument': 'BTCUSD',
+            'entry': 27450.00, 'sl': 27200.00, 'target': 27800.00, 'risk': 250.00,
+            'reward': 350.00, 'rr_ratio': 1.40, 'outcome': 'Target Hit', 'result': 'Win'
+        },
+        {
+            'id': 4, 'date': '2023-10-05', 'trader': 'Waithaka', 'instrument': 'EURUSD',
+            'entry': 1.06250, 'sl': 1.06000, 'target': 1.06700, 'risk': 0.00250,
+            'reward': 0.00450, 'rr_ratio': 1.80, 'outcome': 'Target Hit', 'result': 'Win'
+        }
+    ]
 
 # Header
-col1, col2, col3 = st.columns([2, 1, 1])
-with col1:
-    st.markdown('<div class="main-header"><span style="margin-right:10px">📊</span>Forex Trading Analytics</div>', unsafe_allow_html=True)
+st.markdown("""
+<div class="main-header">
+    <h1>📈 Forex Trading Analytics</h1>
+    <p>Professional Trading Performance Dashboard</p>
+</div>
+""", unsafe_allow_html=True)
 
-with col3:
-    st.write("")
-    dashboard, history, settings = st.columns(3)
-    with dashboard:
-        st.button("Dashboard", use_container_width=True)
-    with history:
-        st.button("History", use_container_width=True)
-    with settings:
-        st.button("Settings", use_container_width=True)
+# Sidebar for adding new trades
+st.sidebar.header("➕ Add New Trade")
 
-# Main content
+with st.sidebar.form("add_trade_form"):
+    trader = st.selectbox("Trader", ["", "Waithaka", "Wallace", "Max"])
+    
+    instrument_pairs = ['XAUUSD', 'USOIL', 'BTCUSD', 'USTECH', 'EURUSD', 'GBPUSD', 'AUDUSD', 'USDJPY', 'USDCAD', 'NZDUSD']
+    instrument = st.selectbox("Instrument", [""] + instrument_pairs)
+    
+    trade_date = st.date_input("Date", value=date.today())
+    outcome = st.selectbox("Outcome", ["", "Target Hit", "SL Hit"])
+    
+    entry_price = st.number_input("Entry Price", value=0.0, step=0.001, format="%.4f")
+    sl_price = st.number_input("Stop Loss (SL)", value=0.0, step=0.001, format="%.4f")
+    target_price = st.number_input("Target Price", value=0.0, step=0.001, format="%.4f")
+    
+    submitted = st.form_submit_button("Add Trade")
+    
+    if submitted and trader and instrument and outcome and entry_price and sl_price and target_price:
+        risk = abs(entry_price - sl_price)
+        reward = abs(target_price - entry_price)
+        rr_ratio = reward / risk if risk != 0 else 0
+        result = "Win" if outcome == "Target Hit" else "Loss"
+        
+        new_trade = {
+            'id': len(st.session_state.trades) + 1,
+            'date': trade_date.strftime('%Y-%m-%d'),
+            'trader': trader,
+            'instrument': instrument,
+            'entry': entry_price,
+            'sl': sl_price,
+            'target': target_price,
+            'risk': risk,
+            'reward': reward,
+            'rr_ratio': round(rr_ratio, 2),
+            'outcome': outcome,
+            'result': result
+        }
+        
+        st.session_state.trades.append(new_trade)
+        st.success("Trade added successfully!")
+        st.rerun()
+
+# Convert trades to DataFrame
+df = pd.DataFrame(st.session_state.trades)
+
+# Calculate trader statistics
+trader_stats = df.groupby('trader').agg({
+    'result': ['count', lambda x: (x == 'Win').sum()],
+    'rr_ratio': 'mean'
+}).round(2)
+
+trader_stats.columns = ['total_trades', 'wins', 'avg_rr']
+trader_stats['losses'] = trader_stats['total_trades'] - trader_stats['wins']
+trader_stats['win_rate'] = (trader_stats['wins'] / trader_stats['total_trades'] * 100).round(1)
+trader_stats = trader_stats.sort_values('win_rate', ascending=False)
+
+# Main content area
 col1, col2 = st.columns([2, 1])
 
 with col1:
-    # Add New Trade Section
-    with st.expander("Add New Trade", expanded=True):
-        st.markdown('<div class="section-header">Add New Trade</div>', unsafe_allow_html=True)
+    # Trader Performance Rankings
+    st.subheader("🏆 Trader Performance Rankings")
+    
+    rank_colors = ["🥇", "🥈", "🥉"]
+    for i, (trader, stats) in enumerate(trader_stats.iterrows()):
+        rank_icon = rank_colors[i] if i < 3 else f"{i+1}."
         
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            trader = st.selectbox("Trader", ["Select Trader", "Waithaka", "Wallace", "Max"])
-        with col2:
-            st.session_state.selected_instrument = st.text_input("Instrument", st.session_state.selected_instrument, placeholder="Enter Instrument")
-            st.write("Quick select:")
-            cols = st.columns(5)
-            for i, pair in enumerate(instrument_pairs):
-                with cols[i % 5]:
-                    if st.button(pair, key=f"btn_{pair}"):
-                        st.session_state.selected_instrument = pair
-                        st.rerun()
-        with col3:
-            trade_date = st.date_input("Date", datetime.now())
-        with col4:
-            outcome = st.selectbox("Outcome", ["Select Outcome", "Target Hit", "SL Hit"])
-        
-        col5, col6, col7, col8 = st.columns(4)
-        with col5:
-            entry_price = st.number_input("Entry Price", value=0.0, format="%.2f")
-        with col6:
-            stop_loss = st.number_input("Stop Loss (SL)", value=0.0, format="%.2f")
-        with col7:
-            target_price = st.number_input("Target Price", value=0.0, format="%.2f")
-        with col8:
-            st.write("")
-            if st.button("Add Trade", use_container_width=True):
-                new_trade = {
-                    'id': len(st.session_state.trades) + 1,
-                    'date': trade_date.strftime('%Y-%m-%d'),
-                    'trader': trader if trader != "Select Trader" else "Unknown",
-                    'instrument': st.session_state.selected_instrument,
-                    'entry': entry_price,
-                    'sl': stop_loss,
-                    'target': target_price,
-                    'risk': abs(entry_price - stop_loss),
-                    'reward': abs(target_price - entry_price),
-                    'rrRatio': round(abs(target_price - entry_price) / abs(entry_price - stop_loss), 2) if entry_price != stop_loss else 0,
-                    'outcome': outcome if outcome != "Select Outcome" else "Pending",
-                    'result': "Win" if outcome == "Target Hit" else "Loss" if outcome == "SL Hit" else "Pending"
-                }
-                st.session_state.trades.append(new_trade)
-                st.success("Trade added successfully!")
-                st.rerun()
-
-    # Trading History
-    st.markdown('<div class="section-header">Trading History</div>', unsafe_allow_html=True)
-    trades_df = pd.DataFrame(st.session_state.trades)
+        with st.container():
+            st.markdown(f"""
+            <div style="background-color: #f8fafc; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem; border-left: 4px solid #3b82f6;">
+                <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
+                    <span style="font-size: 1.5rem; margin-right: 1rem;">{rank_icon}</span>
+                    <div>
+                        <strong style="font-size: 1.2rem;">{trader}</strong>
+                        <span style="margin-left: 2rem; color: #4ade80; font-weight: bold;">Win Rate: {stats['win_rate']}%</span>
+                    </div>
+                </div>
+                <div style="color: #6b7280; font-size: 0.9rem; margin-bottom: 0.5rem;">
+                    Total Trades: {stats['total_trades']} | Wins: {stats['wins']} | Losses: {stats['losses']}
+                </div>
+                <div style="background-color: #e5e7eb; height: 8px; border-radius: 4px; overflow: hidden;">
+                    <div style="background-color: #10b981; height: 100%; width: {stats['win_rate']}%; transition: width 0.3s ease;"></div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    # Trading History Table
+    st.subheader("📊 Trading History")
     
     # Add delete functionality
-    if not trades_df.empty:
-        trades_df['Delete'] = False
-        edited_df = st.data_editor(
-            trades_df,
-            column_config={
-                "Delete": st.column_config.CheckboxColumn(
-                    "Delete?",
-                    help="Select trades to delete",
-                    default=False,
-                ),
-                "result": st.column_config.SelectboxColumn(
-                    "Result",
-                    options=["Win", "Loss", "Pending"],
-                    required=True
-                )
-            },
-            hide_index=True,
-            use_container_width=True,
-            num_rows="dynamic"
+    if st.button("🗑️ Delete Selected Trades"):
+        st.session_state.show_delete = True
+    
+    if hasattr(st.session_state, 'show_delete') and st.session_state.show_delete:
+        trades_to_delete = st.multiselect(
+            "Select trades to delete:",
+            options=range(len(st.session_state.trades)),
+            format_func=lambda x: f"Trade {st.session_state.trades[x]['id']}: {st.session_state.trades[x]['trader']} - {st.session_state.trades[x]['instrument']}"
         )
         
-        if st.button("Delete Selected Trades"):
-            # Get indices of rows to delete
-            delete_indices = edited_df[edited_df['Delete']].index
-            if not delete_indices.empty:
-                # Remove from session state
-                st.session_state.trades = [trade for i, trade in enumerate(st.session_state.trades) if i not in delete_indices]
-                st.success(f"Deleted {len(delete_indices)} trades")
+        col_del1, col_del2 = st.columns(2)
+        with col_del1:
+            if st.button("Confirm Delete", type="primary"):
+                for idx in sorted(trades_to_delete, reverse=True):
+                    st.session_state.trades.pop(idx)
+                st.session_state.show_delete = False
+                st.success("Selected trades deleted!")
                 st.rerun()
+        
+        with col_del2:
+            if st.button("Cancel"):
+                st.session_state.show_delete = False
+                st.rerun()
+    
+    # Display trades table
+    if df.empty:
+        st.info("No trades recorded yet. Add a trade using the sidebar.")
+    else:
+        # Format the dataframe for display
+        display_df = df.copy()
+        display_df['Result'] = display_df['result'].apply(
+            lambda x: '✅ Win' if x == 'Win' else '❌ Loss'
+        )
+        
+        st.dataframe(
+            display_df[['date', 'trader', 'instrument', 'entry', 'sl', 'target', 'risk', 'reward', 'rr_ratio', 'outcome', 'Result']].rename(columns={
+                'date': 'Date',
+                'trader': 'Trader',
+                'instrument': 'Instrument',
+                'entry': 'Entry',
+                'sl': 'SL',
+                'target': 'Target',
+                'risk': 'Risk',
+                'reward': 'Reward',
+                'rr_ratio': 'R/R Ratio',
+                'outcome': 'Outcome'
+            }),
+            use_container_width=True,
+            hide_index=True
+        )
 
 with col2:
-    # Performance Metrics
-    st.markdown('<div class="section-header">Performance Metrics</div>', unsafe_allow_html=True)
+    # Performance Metrics - Donut Chart
+    st.subheader("📈 Performance Metrics")
     
-    # Calculate win rates
-    if not trades_df.empty:
-        win_rates = trades_df.groupby('trader')['result'].apply(
-            lambda x: (x == 'Win').sum() / len(x) * 100 if len(x) > 0 else 0
-        ).round(1)
-        
+    if not trader_stats.empty:
         # Create donut chart
-        fig = go.Figure(data=[go.Pie(
-            labels=win_rates.index,
-            values=win_rates.values,
-            hole=0.6,
-            marker_colors=['#3b82f6', '#000000', '#eab308']
+        fig_donut = go.Figure(data=[go.Pie(
+            labels=trader_stats.index,
+            values=trader_stats['win_rate'],
+            hole=0.4,
+            marker_colors=['#f59e0b', '#3b82f6', '#6b7280']
         )])
-        fig.update_layout(showlegend=False, height=300)
-        st.plotly_chart(fig, use_container_width=True)
         
-        # Display win rates
-        for trader, rate in win_rates.items():
-            st.metric(f"{trader} Win Rate", f"{rate}%")
-    else:
-        st.info("No trades to display metrics")
-
+        fig_donut.update_layout(
+            title="Win Rate Distribution",
+            height=300,
+            showlegend=True,
+            annotations=[dict(text=f'{trader_stats["win_rate"].mean():.1f}%<br>Avg Rate', 
+                             x=0.5, y=0.5, font_size=16, showarrow=False)]
+        )
+        
+        st.plotly_chart(fig_donut, use_container_width=True)
+        
+        # Win rate breakdown
+        st.markdown("**Win Rate Breakdown:**")
+        for trader, stats in trader_stats.iterrows():
+            st.metric(
+                label=trader,
+                value=f"{stats['win_rate']}%",
+                delta=f"{stats['total_trades']} trades"
+            )
+    
     # Trader of the Month
-    st.markdown('<div class="section-header">Trader of the Month</div>', unsafe_allow_html=True)
-    st.markdown("""
-    <div style='text-align: center; padding: 1rem; background-color: white; border-radius: 0.5rem; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);'>
-        <div style='font-size: 3rem; margin-bottom: 1rem;'>🏆</div>
-        <h3 style='margin-bottom: 0.5rem;'>Waithaka</h3>
-        <p style='color: #6b7280; margin-bottom: 1rem;'>Best performance with 72.5% win rate</p>
-        <div style='background-color: #dcfce7; padding: 1rem; border-radius: 0.5rem;'>
-            <div style='font-size: 0.75rem; color: #6b7280;'>WIN RATE THIS MONTH</div>
-            <div style='font-size: 1.5rem; font-weight: bold; color: #166534;'>72.5%</div>
+    st.subheader("🏆 Trader of the Month")
+    if not trader_stats.empty:
+        best_trader = trader_stats.index[0]
+        best_rate = trader_stats.iloc[0]['win_rate']
+        
+        st.markdown(f"""
+        <div style="text-align: center; padding: 2rem; background-color: #f0fdf4; border-radius: 1rem; border: 2px solid #22c55e;">
+            <div style="font-size: 4rem; margin-bottom: 1rem;">🏆</div>
+            <h3 style="color: #15803d; margin-bottom: 0.5rem;">{best_trader}</h3>
+            <p style="color: #6b7280; margin-bottom: 1rem;">Best performance this month</p>
+            <div style="background-color: #dcfce7; padding: 1rem; border-radius: 0.5rem;">
+                <div style="font-size: 0.8rem; color: #16a34a; font-weight: bold;">WIN RATE THIS MONTH</div>
+                <div style="font-size: 2rem; font-weight: bold; color: #15803d;">{best_rate}%</div>
+            </div>
         </div>
-    </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
+    
+    # Instrument Performance
+    st.subheader("📊 Instrument Performance")
+    
+    if not df.empty:
+        instrument_performance = df.groupby(['instrument', 'trader']).agg({
+            'result': lambda x: (x == 'Win').sum() / len(x) * 100
+        }).round(1)
+        
+        # Create a pivot table for better display
+        pivot_table = instrument_performance.unstack(fill_value=0)
+        pivot_table.columns = pivot_table.columns.droplevel(0)
+        
+        if not pivot_table.empty:
+            # Display as heatmap
+            fig_heatmap = px.imshow(
+                pivot_table.values,
+                labels=dict(x="Trader", y="Instrument", color="Win Rate %"),
+                x=pivot_table.columns,
+                y=pivot_table.index,
+                color_continuous_scale="RdYlGn",
+                aspect="auto"
+            )
+            
+            fig_heatmap.update_layout(
+                title="Win Rate by Instrument & Trader",
+                height=300
+            )
+            
+            st.plotly_chart(fig_heatmap, use_container_width=True)
 
-# Trader Performance Rankings
+# Additional Analytics Section
+st.subheader("📈 Additional Analytics")
+
+col3, col4, col5 = st.columns(3)
+
+with col3:
+    if not df.empty:
+        total_trades = len(df)
+        total_wins = len(df[df['result'] == 'Win'])
+        overall_win_rate = (total_wins / total_trades * 100) if total_trades > 0 else 0
+        
+        st.metric(
+            label="Overall Statistics",
+            value=f"{overall_win_rate:.1f}%",
+            delta=f"{total_trades} total trades"
+        )
+
+with col4:
+    if not df.empty:
+        avg_rr = df['rr_ratio'].mean()
+        best_rr = df['rr_ratio'].max()
+        
+        st.metric(
+            label="Risk/Reward Ratio",
+            value=f"{avg_rr:.2f}",
+            delta=f"Best: {best_rr:.2f}"
+        )
+
+with col5:
+    if not df.empty:
+        recent_trades = df.tail(5)
+        recent_wins = len(recent_trades[recent_trades['result'] == 'Win'])
+        recent_win_rate = (recent_wins / len(recent_trades) * 100) if len(recent_trades) > 0 else 0
+        
+        st.metric(
+            label="Recent Performance",
+            value=f"{recent_win_rate:.1f}%",
+            delta=f"Last 5 trades"
+        )
+
+# Footer
 st.markdown("---")
-st.markdown('<div class="section-header">Trader Performance Rankings</div>', unsafe_allow_html=True)
-
-if not trades_df.empty:
-    # Calculate performance metrics
-    performance_data = []
-    for trader in trades_df['trader'].unique():
-        trader_trades = trades_df[trades_df['trader'] == trader]
-        win_rate = (trader_trades['result'] == 'Win').sum() / len(trader_trades) * 100
-        performance_data.append({
-            'Trader': trader,
-            'Win Rate': win_rate,
-            'Total Trades': len(trader_trades),
-            'Wins': (trader_trades['result'] == 'Win').sum(),
-            'Losses': (trader_trades['result'] == 'Loss').sum()
-        })
-    
-    performance_df = pd.DataFrame(performance_data).sort_values('Win Rate', ascending=False)
-    performance_df['Rank'] = range(1, len(performance_df) + 1)
-    
-    # Display rankings
-    for _, row in performance_df.iterrows():
-        with st.container():
-            col1, col2 = st.columns([0.1, 0.9])
-            with col1:
-                rank_color = "#fbbf24" if row['Rank'] == 1 else "#9ca3af" if row['Rank'] == 2 else "#fb923c"
-                st.markdown(f"<div style='background-color: {rank_color}; color: black; width: 2rem; height: 2rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold;'>{row['Rank']}</div>", unsafe_allow_html=True)
-            with col2:
-                st.markdown(f"**{row['Trader']}** - Win Rate: {row['Win Rate']:.1f}%")
-                st.markdown(f"Total Trades: {row['Total Trades']} | Wins: {row['Wins']} | Losses: {row['Losses']}")
-                st.progress(row['Win Rate'] / 100)
-else:
-    st.info("No trades data available for performance rankings")
+st.markdown("*Forex Trading Analytics Dashboard - Built with Streamlit*")
