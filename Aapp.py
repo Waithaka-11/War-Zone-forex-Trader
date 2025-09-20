@@ -4,6 +4,52 @@ import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime, date
 import numpy as np
+import json
+import os
+
+# Data persistence functions for multi-device usage
+TRADES_FILE = 'forex_trades_data.json'
+
+@st.cache_data
+def load_trades_from_file():
+    """Load trades from JSON file"""
+    if os.path.exists(TRADES_FILE):
+        try:
+            with open(TRADES_FILE, 'r') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError):
+            pass
+    
+    # Return default trades if file doesn't exist or is corrupted
+    return [
+        { 'id': 1, 'date': '2023-10-08', 'trader': 'Waithaka', 'instrument': 'XAUUSD', 'entry': 1820.50, 'sl': 1815.00, 'target': 1830.00, 'risk': 5.50, 'reward': 9.50, 'rrRatio': 1.73, 'outcome': 'Target Hit', 'result': 'Win' },
+        { 'id': 2, 'date': '2023-10-07', 'trader': 'Wallace', 'instrument': 'USOIL', 'entry': 89.30, 'sl': 88.50, 'target': 91.00, 'risk': 0.80, 'reward': 1.70, 'rrRatio': 2.13, 'outcome': 'SL Hit', 'result': 'Loss' },
+        { 'id': 3, 'date': '2023-10-06', 'trader': 'Max', 'instrument': 'BTCUSD', 'entry': 27450.00, 'sl': 27200.00, 'target': 27800.00, 'risk': 250.00, 'reward': 350.00, 'rrRatio': 1.40, 'outcome': 'Target Hit', 'result': 'Win' },
+        { 'id': 4, 'date': '2023-10-05', 'trader': 'Waithaka', 'instrument': 'EURUSD', 'entry': 1.06250, 'sl': 1.06000, 'target': 1.06700, 'risk': 0.00250, 'reward': 0.00450, 'rrRatio': 1.80, 'outcome': 'Target Hit', 'result': 'Win' }
+    ]
+
+def save_trades_to_file(trades_data):
+    """Save trades to JSON file"""
+    try:
+        with open(TRADES_FILE, 'w') as f:
+            json.dump(trades_data, f, indent=2)
+        return True
+    except Exception as e:
+        st.error(f"Error saving data: {e}")
+        return False
+
+# Auto-refresh functionality
+def auto_refresh_data():
+    """Automatically refresh data from file every 5 seconds"""
+    if os.path.exists(TRADES_FILE):
+        file_mod_time = os.path.getmtime(TRADES_FILE)
+        if 'last_file_mod_time' not in st.session_state:
+            st.session_state.last_file_mod_time = file_mod_time
+        elif st.session_state.last_file_mod_time != file_mod_time:
+            # File was modified, reload data
+            st.session_state.trades = load_trades_from_file()
+            st.session_state.last_file_mod_time = file_mod_time
+            st.rerun()
 
 # Page configuration
 st.set_page_config(
@@ -298,14 +344,12 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Initialize session state for trades
+# Initialize session state for trades with persistent data
 if 'trades' not in st.session_state:
-    st.session_state.trades = [
-        { 'id': 1, 'date': '2023-10-08', 'trader': 'Waithaka', 'instrument': 'XAUUSD', 'entry': 1820.50, 'sl': 1815.00, 'target': 1830.00, 'risk': 5.50, 'reward': 9.50, 'rrRatio': 1.73, 'outcome': 'Target Hit', 'result': 'Win' },
-        { 'id': 2, 'date': '2023-10-07', 'trader': 'Wallace', 'instrument': 'USOIL', 'entry': 89.30, 'sl': 88.50, 'target': 91.00, 'risk': 0.80, 'reward': 1.70, 'rrRatio': 2.13, 'outcome': 'SL Hit', 'result': 'Loss' },
-        { 'id': 3, 'date': '2023-10-06', 'trader': 'Max', 'instrument': 'BTCUSD', 'entry': 27450.00, 'sl': 27200.00, 'target': 27800.00, 'risk': 250.00, 'reward': 350.00, 'rrRatio': 1.40, 'outcome': 'Target Hit', 'result': 'Win' },
-        { 'id': 4, 'date': '2023-10-05', 'trader': 'Waithaka', 'instrument': 'EURUSD', 'entry': 1.06250, 'sl': 1.06000, 'target': 1.06700, 'risk': 0.00250, 'reward': 0.00450, 'rrRatio': 1.80, 'outcome': 'Target Hit', 'result': 'Win' }
-    ]
+    st.session_state.trades = load_trades_from_file()
+
+# Auto-refresh data (check for updates from other devices)
+auto_refresh_data()
 
 if 'selected_instrument' not in st.session_state:
     st.session_state.selected_instrument = ''
@@ -441,7 +485,11 @@ with col8:
             }
             
             st.session_state.trades.append(new_trade)
-            st.success("Trade added successfully!")
+            # Save to file for multi-device persistence
+            if save_trades_to_file(st.session_state.trades):
+                st.success("Trade added successfully and synced across devices!")
+            else:
+                st.success("Trade added successfully!")
             st.rerun()
         else:
             st.error("Please fill in all fields to add a trade.")
@@ -511,32 +559,32 @@ with col_main:
         
         for i, header in enumerate(headers):
             with header_cols[i]:
-                st.markdown(f'<div style="font-weight: bold; color: #374151; padding: 0.5rem 0; border-bottom: 2px solid #e5e7eb; font-size: 0.875rem;">{header}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="font-weight: bold; color: #000000; padding: 0.5rem 0; border-bottom: 2px solid #e5e7eb; font-size: 0.875rem;">{header}</div>', unsafe_allow_html=True)
         
         # Create columns for each trade row
         for i, trade in enumerate(st.session_state.trades):
             cols = st.columns([1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.2, 1.2, 1.2, 1.8, 1.5, 1])
             
             with cols[0]:
-                st.write(trade['date'])
+                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0;">{trade["date"]}</div>', unsafe_allow_html=True)
             with cols[1]:
-                st.write(trade['trader'])
+                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0;">{trade["trader"]}</div>', unsafe_allow_html=True)
             with cols[2]:
-                st.write(trade['instrument'])
+                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0;">{trade["instrument"]}</div>', unsafe_allow_html=True)
             with cols[3]:
-                st.write(f"{trade['entry']}")
+                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0;">{trade["entry"]}</div>', unsafe_allow_html=True)
             with cols[4]:
-                st.write(f"{trade['sl']}")
+                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0;">{trade["sl"]}</div>', unsafe_allow_html=True)
             with cols[5]:
-                st.write(f"{trade['target']}")
+                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0;">{trade["target"]}</div>', unsafe_allow_html=True)
             with cols[6]:
-                st.write(f"{trade['risk']}")
+                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0;">{trade["risk"]}</div>', unsafe_allow_html=True)
             with cols[7]:
-                st.write(f"{trade['reward']}")
+                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0;">{trade["reward"]}</div>', unsafe_allow_html=True)
             with cols[8]:
-                st.write(f"{trade['rrRatio']}")
+                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0;">{trade["rrRatio"]}</div>', unsafe_allow_html=True)
             with cols[9]:
-                st.write(trade['outcome'])
+                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0;">{trade["outcome"]}</div>', unsafe_allow_html=True)
             with cols[10]:
                 if trade['result'] == 'Win':
                     st.markdown('<span style="background-color: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 12px; font-weight: 500; font-size: 0.75rem;">Win</span>', unsafe_allow_html=True)
@@ -545,6 +593,8 @@ with col_main:
             with cols[11]:
                 if st.button("🗑️", key=f"delete_{i}", help="Delete this trade", type="secondary"):
                     st.session_state.trades.pop(i)
+                    # Save to file after deletion
+                    save_trades_to_file(st.session_state.trades)
                     st.rerun()
 
 with col_sidebar:
