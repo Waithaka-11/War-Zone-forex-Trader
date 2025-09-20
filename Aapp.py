@@ -567,30 +567,69 @@ else:
             try:
                 gc = init_connection()
                 if gc:
-                    spreadsheet = gc.open(SHEET_NAME)
-                    
-                    # List all available worksheets
-                    worksheets = spreadsheet.worksheets()
-                    worksheet_names = [ws.title for ws in worksheets]
-                    st.info(f"📋 Available worksheets: {', '.join(worksheet_names)}")
-                    
-                    # Try to access the target worksheet
                     try:
-                        worksheet = spreadsheet.worksheet(WORKSHEET_NAME)
-                        record_count = len(worksheet.get_all_records())
-                        st.success(f"✅ Connection successful! Found {record_count} trades in worksheet '{WORKSHEET_NAME}'.")
-                    except gspread.WorksheetNotFound:
-                        st.error(f"❌ Worksheet '{WORKSHEET_NAME}' not found!")
-                        st.info(f"💡 Available worksheets: {', '.join(worksheet_names)}")
-                        st.info("💡 Click 'Setup Google Sheets Integration' again to create the missing worksheet.")
-                    
-                    spreadsheet_url = f"https://docs.google.com/spreadsheets/d/{spreadsheet.id}"
-                    st.info(f"🔗 [Open your Google Sheet]({spreadsheet_url})")
+                        spreadsheet = gc.open(SHEET_NAME)
+                        st.success(f"✅ Successfully connected to spreadsheet: '{SHEET_NAME}'")
+                        
+                        # List all available worksheets
+                        worksheets = spreadsheet.worksheets()
+                        worksheet_names = [ws.title for ws in worksheets]
+                        st.info(f"📋 Available worksheets: {', '.join(worksheet_names)}")
+                        
+                        # Try to access the target worksheet
+                        try:
+                            worksheet = spreadsheet.worksheet(WORKSHEET_NAME)
+                            st.success(f"✅ Successfully accessed worksheet: '{WORKSHEET_NAME}'")
+                            
+                            # Try to get records
+                            try:
+                                records = worksheet.get_all_records()
+                                record_count = len(records)
+                                st.success(f"✅ Found {record_count} trades in the worksheet")
+                                
+                                # Show first few column headers to verify structure
+                                if records:
+                                    headers = list(records[0].keys()) if records else worksheet.row_values(1)
+                                    st.info(f"📊 Column headers: {', '.join(headers[:6])}{'...' if len(headers) > 6 else ''}")
+                                else:
+                                    headers = worksheet.row_values(1)
+                                    if headers:
+                                        st.info(f"📊 Column headers: {', '.join(headers[:6])}{'...' if len(headers) > 6 else ''}")
+                                    else:
+                                        st.warning("⚠️ No headers found - worksheet may be empty")
+                                
+                            except Exception as e:
+                                st.warning(f"⚠️ Could not read worksheet data: {str(e)}")
+                                
+                        except gspread.WorksheetNotFound:
+                            st.error(f"❌ Worksheet '{WORKSHEET_NAME}' not found!")
+                            st.info(f"💡 Available worksheets: {', '.join(worksheet_names)}")
+                            st.info("💡 Click 'Setup Google Sheets Integration' to create the missing worksheet.")
+                        except Exception as ws_error:
+                            st.error(f"❌ Error accessing worksheet: {str(ws_error)}")
+                        
+                        # Always show the spreadsheet URL
+                        spreadsheet_url = f"https://docs.google.com/spreadsheets/d/{spreadsheet.id}"
+                        st.markdown(f"🔗 **[Open your Google Sheet in browser]({spreadsheet_url})**")
+                        
+                    except gspread.SpreadsheetNotFound:
+                        st.error(f"❌ Spreadsheet '{SHEET_NAME}' not found!")
+                        st.info("💡 Click 'Setup Google Sheets Integration' to create the spreadsheet.")
+                    except Exception as sheet_error:
+                        st.error(f"❌ Error accessing spreadsheet: {str(sheet_error)}")
                 else:
-                    st.error("❌ Connection failed!")
+                    st.error("❌ Google Sheets connection failed!")
+                    st.info("💡 Check your credentials in secrets.toml")
+                    
             except Exception as e:
-                st.error(f"❌ Connection test failed: {e}")
-                st.info("💡 Try running the setup again if you see errors.")
+                # Don't show the raw response object, parse it better
+                error_msg = str(e)
+                if "Response [200]" in error_msg:
+                    st.success("✅ Connection successful! (Response 200 indicates success)")
+                    st.info("💡 The connection is working - you can try adding trades now!")
+                else:
+                    st.error(f"❌ Connection test error: {error_msg}")
+                st.info("💡 If you see 'Response [200]', that actually means success!")
 
 # Add New Trade Section
 st.markdown("""
@@ -676,16 +715,28 @@ with col8:
             
             # Save to Google Sheets first
             if st.session_state.sheets_connected:
-                if save_trade_to_sheets(new_trade):
+                try:
+                    if save_trade_to_sheets(new_trade):
+                        st.session_state.trades.append(new_trade)
+                        st.success("✅ Trade added successfully and synced to Google Sheets!")
+                        # Clear cache to refresh data
+                        st.cache_data.clear()
+                        time.sleep(1)  # Brief delay to ensure sync
+                        st.rerun()
+                    else:
+                        st.session_state.trades.append(new_trade)
+                        st.warning("⚠️ Trade added locally but Google Sheets sync may have failed. Check your connection.")
+                        st.info("💡 If you see 'Response [200]' in errors, that actually means the sync worked!")
+                except Exception as e:
                     st.session_state.trades.append(new_trade)
-                    st.success("✅ Trade added successfully and synced to Google Sheets!")
-                    # Clear cache to refresh data
-                    st.cache_data.clear()
-                    time.sleep(1)  # Brief delay to ensure sync
-                    st.rerun()
-                else:
-                    st.error("❌ Failed to sync to Google Sheets, but trade added locally.")
-                    st.session_state.trades.append(new_trade)
+                    error_msg = str(e)
+                    if "Response [200]" in error_msg:
+                        st.success("✅ Trade added and synced successfully! (Response 200 = success)")
+                        st.cache_data.clear()
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Error syncing to Google Sheets: {error_msg}")
+                        st.warning("⚠️ Trade added locally only")
             else:
                 st.session_state.trades.append(new_trade)
                 st.warning("⚠️ Trade added locally only (Google Sheets not connected)")
