@@ -1,4 +1,19 @@
-import streamlit as st
+# Create dynamic donut chart based on current data
+    if rankings and len(rankings) > 0:
+        labels = [r['name'] for r in rankings[:3]]  # Top 3 traders
+        values = [r['win_rate'] for r in rankings[:3]]
+        colors = ['#fb923c', '#3b82f6', '#9ca3af']
+        
+        # Calculate average win rate
+        avg_win_rate = sum(values) / len(values) if values else 0
+        
+        fig_donut = go.Figure(data=[go.Pie(
+            labels=labels, 
+            values=values, 
+            hole=0.6,
+            marker=dict(colors=colors[:len(labels)], line=dict(color='#FFFFFF', width=2)),
+            textinfo='none',
+            import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
@@ -716,27 +731,30 @@ with col8:
             # Save to Google Sheets first
             if st.session_state.sheets_connected:
                     try:
-                        if save_trade_to_sheets(new_trade):
-                            st.session_state.trades.append(new_trade)
+                        success = save_trade_to_sheets(new_trade)
+                        st.session_state.trades.append(new_trade)
+                        
+                        if success:
                             st.success("✅ Trade added successfully and synced to Google Sheets!")
-                            # Force immediate refresh for real-time sync
+                            # Force immediate refresh and clear form
                             force_refresh_data()
                             time.sleep(0.5)  # Brief delay to ensure sync propagation
-                            st.rerun()
                         else:
-                            st.session_state.trades.append(new_trade)
-                            st.warning("⚠️ Trade added locally but Google Sheets sync may have failed. Check your connection.")
-                            st.info("💡 If you see 'Response [200]' in errors, that actually means the sync worked!")
+                            st.warning("⚠️ Trade added locally but Google Sheets sync may have failed.")
+                            
+                        # Always rerun to update the UI with new trade
+                        st.rerun()
+                        
                     except Exception as e:
                         st.session_state.trades.append(new_trade)
                         error_msg = str(e)
                         if "Response [200]" in error_msg:
-                            st.success("✅ Trade added and synced successfully! (Response 200 = success)")
+                            st.success("✅ Trade added and synced successfully!")
                             force_refresh_data()
-                            st.rerun()
                         else:
                             st.error(f"❌ Error syncing to Google Sheets: {error_msg}")
                             st.warning("⚠️ Trade added locally only")
+                        st.rerun()
             else:
                 st.session_state.trades.append(new_trade)
                 st.warning("⚠️ Trade added locally only (Google Sheets not connected)")
@@ -759,8 +777,11 @@ with sync_col1:
 with sync_col2:
     if st.button("🔄", help="Force refresh data from Google Sheets", key="manual_refresh"):
         with st.spinner("Refreshing..."):
-            force_refresh_data()
-            st.success("Data refreshed!")
+            if force_refresh_data():
+                st.success("Data refreshed!")
+            else:
+                st.warning("Refresh completed (local data)")
+            time.sleep(1)  # Show the message briefly
             st.rerun()
 
 with sync_col3:
@@ -774,27 +795,29 @@ col_main, col_sidebar = st.columns([2, 1])
 
 with col_main:
     # Calculate dynamic rankings based on current data
-    if st.session_state.trades:
+    if st.session_state.trades and len(st.session_state.trades) > 0:
         trader_stats = {}
         for trade in st.session_state.trades:
-            trader = trade['trader']
-            if trader not in trader_stats:
-                trader_stats[trader] = {'wins': 0, 'total': 0}
-            trader_stats[trader]['total'] += 1
-            if trade['result'] == 'Win':
-                trader_stats[trader]['wins'] += 1
+            trader = trade.get('trader', '')
+            if trader and trader != '':
+                if trader not in trader_stats:
+                    trader_stats[trader] = {'wins': 0, 'total': 0}
+                trader_stats[trader]['total'] += 1
+                if trade.get('result', '') == 'Win':
+                    trader_stats[trader]['wins'] += 1
         
         # Calculate win rates and sort
         rankings = []
         for trader, stats in trader_stats.items():
-            win_rate = (stats['wins'] / stats['total']) * 100 if stats['total'] > 0 else 0
-            rankings.append({
-                'name': trader,
-                'win_rate': round(win_rate, 1),
-                'wins': stats['wins'],
-                'losses': stats['total'] - stats['wins'],
-                'total': stats['total']
-            })
+            if stats['total'] > 0:  # Only include traders with trades
+                win_rate = (stats['wins'] / stats['total']) * 100
+                rankings.append({
+                    'name': trader,
+                    'win_rate': round(win_rate, 1),
+                    'wins': stats['wins'],
+                    'losses': stats['total'] - stats['wins'],
+                    'total': stats['total']
+                })
         
         rankings.sort(key=lambda x: x['win_rate'], reverse=True)
         for i, ranking in enumerate(rankings):
@@ -811,9 +834,9 @@ with col_main:
         <div class="card-body">
     """, unsafe_allow_html=True)
     
-    if rankings:
+    if rankings and len(rankings) > 0:
         for ranking in rankings:
-            rank_class = f"rank-{ranking['rank']}" if ranking['rank'] <= 3 else "rank-other"
+            rank_class = f"rank-{min(ranking['rank'], 3)}"  # Cap at 3 for styling
             st.markdown(f"""
             <div class="rank-item">
                 <div class="rank-number {rank_class}">{ranking['rank']}</div>
@@ -831,7 +854,7 @@ with col_main:
             </div>
             """, unsafe_allow_html=True)
     else:
-        st.info("No trades available for rankings.")
+        st.info("No trades available for rankings. Add some trades to see performance metrics!")
     
     st.markdown('</div></div>', unsafe_allow_html=True)
     
@@ -848,7 +871,7 @@ with col_main:
     """, unsafe_allow_html=True)
     
     # Display trades with individual delete buttons
-    if not st.session_state.trades:
+    if not st.session_state.trades or len(st.session_state.trades) == 0:
         st.info("No trades recorded yet. Add a trade using the form above.")
     else:
         # Header row
@@ -859,63 +882,70 @@ with col_main:
             with header_cols[i]:
                 st.markdown(f'<div style="font-weight: bold; color: #000000; padding: 0.5rem 0; border-bottom: 2px solid #e5e7eb; font-size: 0.875rem;">{header}</div>', unsafe_allow_html=True)
         
-        # Create columns for each trade row
-        for i, trade in enumerate(st.session_state.trades):
+        # Create columns for each trade row (sort by ID descending to show newest first)
+        sorted_trades = sorted(st.session_state.trades, key=lambda x: x.get('id', 0), reverse=True)
+        for i, trade in enumerate(sorted_trades):
             cols = st.columns([1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.2, 1.2, 1.2, 1.8, 1.5, 1])
             
             with cols[0]:
-                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0;">{trade["date"]}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0; font-size: 0.875rem;">{trade.get("date", "N/A")}</div>', unsafe_allow_html=True)
             with cols[1]:
-                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0;">{trade["trader"]}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0; font-size: 0.875rem;">{trade.get("trader", "N/A")}</div>', unsafe_allow_html=True)
             with cols[2]:
-                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0;">{trade["instrument"]}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0; font-size: 0.875rem;">{trade.get("instrument", "N/A")}</div>', unsafe_allow_html=True)
             with cols[3]:
-                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0;">{trade["entry"]}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0; font-size: 0.875rem;">{trade.get("entry", 0)}</div>', unsafe_allow_html=True)
             with cols[4]:
-                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0;">{trade["sl"]}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0; font-size: 0.875rem;">{trade.get("sl", 0)}</div>', unsafe_allow_html=True)
             with cols[5]:
-                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0;">{trade["target"]}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0; font-size: 0.875rem;">{trade.get("target", 0)}</div>', unsafe_allow_html=True)
             with cols[6]:
-                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0;">{trade["risk"]}</div>', unsafe_allow_html=True)
+                risk_val = trade.get("risk", 0)
+                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0; font-size: 0.875rem;">{risk_val:.4f}</div>', unsafe_allow_html=True)
             with cols[7]:
-                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0;">{trade["reward"]}</div>', unsafe_allow_html=True)
+                reward_val = trade.get("reward", 0)
+                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0; font-size: 0.875rem;">{reward_val:.4f}</div>', unsafe_allow_html=True)
             with cols[8]:
-                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0;">{trade["rrRatio"]}</div>', unsafe_allow_html=True)
+                rr_val = trade.get("rrRatio", 0)
+                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0; font-size: 0.875rem;">{rr_val}</div>', unsafe_allow_html=True)
             with cols[9]:
-                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0;">{trade["outcome"]}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0; font-size: 0.875rem;">{trade.get("outcome", "N/A")}</div>', unsafe_allow_html=True)
             with cols[10]:
-                if trade['result'] == 'Win':
+                result = trade.get('result', 'Unknown')
+                if result == 'Win':
                     st.markdown('<span style="background-color: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 12px; font-weight: 500; font-size: 0.75rem;">Win</span>', unsafe_allow_html=True)
-                else:
+                elif result == 'Loss':
                     st.markdown('<span style="background-color: #fee2e2; color: #dc2626; padding: 4px 8px; border-radius: 12px; font-weight: 500; font-size: 0.75rem;">Loss</span>', unsafe_allow_html=True)
+                else:
+                    st.markdown('<span style="background-color: #f3f4f6; color: #6b7280; padding: 4px 8px; border-radius: 12px; font-weight: 500; font-size: 0.75rem;">Unknown</span>', unsafe_allow_html=True)
             with cols[11]:
-                if st.button("🗑️", key=f"delete_{trade['id']}", help="Delete this trade", type="secondary"):
+                if st.button("🗑️", key=f"delete_{trade.get('id', i)}_{i}", help="Delete this trade", type="secondary"):
                     # Delete from Google Sheets first
                     if st.session_state.sheets_connected:
                         try:
-                            if delete_trade_from_sheets(trade['id']):
-                                st.session_state.trades = [t for t in st.session_state.trades if t['id'] != trade['id']]
+                            success = delete_trade_from_sheets(trade['id'])
+                            st.session_state.trades = [t for t in st.session_state.trades if t.get('id') != trade.get('id')]
+                            
+                            if success:
                                 st.success("✅ Trade deleted and synced!")
                                 # Force immediate refresh for real-time sync
                                 force_refresh_data()
-                                st.rerun()
                             else:
-                                st.session_state.trades = [t for t in st.session_state.trades if t['id'] != trade['id']]
                                 st.warning("⚠️ Trade deleted locally, but Google Sheets sync may have failed")
-                                st.rerun()
+                                
+                            st.rerun()
+                            
                         except Exception as e:
+                            st.session_state.trades = [t for t in st.session_state.trades if t.get('id') != trade.get('id')]
                             error_msg = str(e)
                             if "Response [200]" in error_msg:
-                                st.session_state.trades = [t for t in st.session_state.trades if t['id'] != trade['id']]
                                 st.success("✅ Trade deleted and synced successfully!")
                                 force_refresh_data()
-                                st.rerun()
                             else:
-                                st.session_state.trades = [t for t in st.session_state.trades if t['id'] != trade['id']]
                                 st.warning(f"⚠️ Trade deleted locally, sync error: {error_msg}")
-                                st.rerun()
+                            st.rerun()
                     else:
-                        st.session_state.trades = [t for t in st.session_state.trades if t['id'] != trade['id']]
+                        st.session_state.trades = [t for t in st.session_state.trades if t.get('id') != trade.get('id')]
                         st.warning("⚠️ Trade deleted locally only (Google Sheets not connected)")
                         st.rerun()
 
@@ -940,7 +970,7 @@ with col_sidebar:
     """, unsafe_allow_html=True)
     
     # Create dynamic donut chart based on current data
-    if rankings:
+    if rankings and len(rankings) > 0:
         labels = [r['name'] for r in rankings[:3]]  # Top 3 traders
         values = [r['win_rate'] for r in rankings[:3]]
         colors = ['#fb923c', '#3b82f6', '#9ca3af']
@@ -977,26 +1007,27 @@ with col_sidebar:
         st.plotly_chart(fig_donut, use_container_width=True)
         
         # Dynamic Legend
-        if len(rankings) >= 3:
-            col_legend1, col_legend2, col_legend3 = st.columns(3)
+        if len(rankings) >= 1:
+            legend_cols = st.columns(min(3, len(rankings)))
             
-            for i, (col, ranking) in enumerate(zip([col_legend1, col_legend2, col_legend3], rankings[:3])):
-                with col:
-                    color = colors[i]
-                    st.markdown(f"""
-                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
-                        <div style="display: flex; align-items: center;">
-                            <div style="width: 0.75rem; height: 0.75rem; background-color: {color}; border-radius: 0.125rem; margin-right: 0.5rem;"></div>
-                            <span style="font-size: 0.875rem; color: #000000;">{ranking['name']}</span>
+            for i, ranking in enumerate(rankings[:3]):
+                if i < len(legend_cols):
+                    with legend_cols[i]:
+                        color = colors[i] if i < len(colors) else '#6b7280'
+                        st.markdown(f"""
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+                            <div style="display: flex; align-items: center;">
+                                <div style="width: 0.75rem; height: 0.75rem; background-color: {color}; border-radius: 0.125rem; margin-right: 0.5rem;"></div>
+                                <span style="font-size: 0.875rem; color: #000000;">{ranking['name']}</span>
+                            </div>
+                            <span style="font-weight: 600; font-size: 0.875rem; color: #000000;">{ranking['win_rate']}%</span>
                         </div>
-                        <span style="font-weight: 600; font-size: 0.875rem; color: #000000;">{ranking['win_rate']}%</span>
-                    </div>
-                    """, unsafe_allow_html=True)
+                        """, unsafe_allow_html=True)
     else:
-        st.info("No data available for performance metrics.")
+        st.info("No data available for performance metrics. Add some trades to see analytics!")
     
     # Trader of the Month (dynamic based on highest win rate)
-    if rankings:
+    if rankings and len(rankings) > 0:
         top_trader = rankings[0]
         st.markdown(f"""
         <div class="trade-card">
@@ -1021,6 +1052,27 @@ with col_sidebar:
             </div>
         </div>
         """, unsafe_allow_html=True)
+    else:
+        # Show placeholder when no data
+        st.markdown("""
+        <div class="trade-card">
+            <div class="card-header">
+                <div style="display: flex; align-items: center;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.5rem;">
+                        <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
+                        <path d="M14 9h1.5a2.5 2.5 0 0 0 0-5H14"></path>
+                        <path d="M6 9v12l6-3 6 3V9"></path>
+                    </svg>
+                    <h3 style="font-weight: 600; margin: 0;">Trader of the Month</h3>
+                </div>
+            </div>
+            <div style="text-align: center; padding: 1.5rem;">
+                <div style="font-size: 4rem; margin-bottom: 1rem; opacity: 0.5;">🏆</div>
+                <h4 style="font-size: 1.25rem; font-weight: bold; color: #6b7280; margin: 0 0 0.5rem 0;">No Data Yet</h4>
+                <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">Add trades to see top performer</p>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
     
     # Dynamic Instrument Performance by Trader
     st.markdown("""
@@ -1037,55 +1089,61 @@ with col_sidebar:
     """, unsafe_allow_html=True)
     
     # Calculate dynamic instrument performance
-    if st.session_state.trades:
+    if st.session_state.trades and len(st.session_state.trades) > 0:
         # Get all unique instruments and traders
-        instruments = list(set(trade['instrument'] for trade in st.session_state.trades))
-        traders = list(set(trade['trader'] for trade in st.session_state.trades))
+        instruments = list(set(trade.get('instrument', '') for trade in st.session_state.trades if trade.get('instrument')))
+        traders = list(set(trade.get('trader', '') for trade in st.session_state.trades if trade.get('trader')))
         
-        # Calculate performance for each trader-instrument combination
-        performance_data = {'Instrument': instruments}
-        
-        for trader in traders:
-            trader_performance = []
-            for instrument in instruments:
-                # Get trades for this trader-instrument combination
-                trades = [t for t in st.session_state.trades if t['trader'] == trader and t['instrument'] == instrument]
-                if trades:
-                    wins = sum(1 for t in trades if t['result'] == 'Win')
-                    win_rate = (wins / len(trades)) * 100
-                    trader_performance.append(f"{win_rate:.0f}%")
-                else:
-                    trader_performance.append("-")
-            performance_data[trader] = trader_performance
-        
-        # Create DataFrame
-        perf_df = pd.DataFrame(performance_data)
-        
-        # Style the dataframe
-        def style_performance(val):
-            if val == '-':
-                return 'background-color: #6b7280; color: white; text-align: center; font-weight: bold; padding: 8px; border-radius: 4px;'
-            elif val.replace('%', '').replace('-', '').isdigit():
-                rate = int(val.replace('%', ''))
-                if rate >= 70:
-                    return 'background-color: #10b981; color: white; text-align: center; font-weight: bold; padding: 8px; border-radius: 4px;'
-                elif rate >= 50:
-                    return 'background-color: #f59e0b; color: white; text-align: center; font-weight: bold; padding: 8px; border-radius: 4px;'
-                else:
-                    return 'background-color: #ef4444; color: white; text-align: center; font-weight: bold; padding: 8px; border-radius: 4px;'
-            else:
-                return 'background-color: #f3f4f6; text-align: center; font-weight: 500; padding: 12px; color: #000000;'
-        
-        # Display the styled dataframe
-        if len(traders) > 0:
-            styled_df = perf_df.style.applymap(style_performance, subset=traders)
-            styled_df = styled_df.applymap(lambda x: 'background-color: #f3f4f6; text-align: center; font-weight: 500; padding: 12px; color: #000000;', subset=['Instrument'])
+        if instruments and traders:
+            # Calculate performance for each trader-instrument combination
+            performance_data = {'Instrument': instruments}
             
-            st.dataframe(styled_df, use_container_width=True, hide_index=True)
+            for trader in traders:
+                trader_performance = []
+                for instrument in instruments:
+                    # Get trades for this trader-instrument combination
+                    trades = [t for t in st.session_state.trades 
+                             if t.get('trader') == trader and t.get('instrument') == instrument]
+                    if trades:
+                        wins = sum(1 for t in trades if t.get('result') == 'Win')
+                        win_rate = (wins / len(trades)) * 100
+                        trader_performance.append(f"{win_rate:.0f}%")
+                    else:
+                        trader_performance.append("-")
+                performance_data[trader] = trader_performance
+            
+            # Create DataFrame
+            perf_df = pd.DataFrame(performance_data)
+            
+            # Style the dataframe
+            def style_performance(val):
+                if val == '-':
+                    return 'background-color: #6b7280; color: white; text-align: center; font-weight: bold; padding: 8px; border-radius: 4px;'
+                elif val.replace('%', '').replace('-', '').isdigit():
+                    try:
+                        rate = int(val.replace('%', ''))
+                        if rate >= 70:
+                            return 'background-color: #10b981; color: white; text-align: center; font-weight: bold; padding: 8px; border-radius: 4px;'
+                        elif rate >= 50:
+                            return 'background-color: #f59e0b; color: white; text-align: center; font-weight: bold; padding: 8px; border-radius: 4px;'
+                        else:
+                            return 'background-color: #ef4444; color: white; text-align: center; font-weight: bold; padding: 8px; border-radius: 4px;'
+                    except:
+                        pass
+                return 'background-color: #f3f4f6; text-align: center; font-weight: 500; padding: 12px; color: #000000;'
+            
+            # Display the styled dataframe
+            if len(traders) > 0:
+                styled_df = perf_df.style.applymap(style_performance, subset=traders)
+                styled_df = styled_df.applymap(lambda x: 'background-color: #f3f4f6; text-align: center; font-weight: 500; padding: 12px; color: #000000;', subset=['Instrument'])
+                
+                st.dataframe(styled_df, use_container_width=True, hide_index=True)
+            else:
+                st.info("No trader data available for instrument performance analysis.")
         else:
-            st.info("No instrument performance data available.")
+            st.info("No complete trading data available for instrument performance analysis.")
     else:
-        st.info("No trades available for instrument performance analysis.")
+        st.info("No trades available for instrument performance analysis. Add some trades to see detailed analytics!")
 
     with st.expander("🔧 Worksheet Configuration", expanded=False):
         st.markdown("""
