@@ -1,4 +1,30 @@
-import streamlit as st
+# Create DataFrame for the table
+    df_trades = pd.DataFrame(st.session_state.trades)
+    
+    # Format the dataframe for display
+    if not df_trades.empty:
+        display_df = df_trades.copy()
+        
+        # Add a delete column with proper icon styling
+        delete_buttons = []
+        for i in range(len(display_df)):
+            delete_buttons.append('🗑️')
+        
+        display_df['Actions'] = delete_buttons
+        
+        # Custom styling for the dataframe
+        def color_result(val):
+            if val == 'Win':
+                return 'background-color: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 12px; font-weight: 500;'
+            elif val == 'Loss':
+                return 'background-color: #fee2e2; color: #dc2626; padding: 4px 8px; border-radius: 12px; font-weight: 500;'
+            else:
+                return ''
+        
+        # Apply custom CSS for delete buttons
+        st.markdown("""
+        <style>
+        .stimport streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
@@ -608,9 +634,9 @@ with col_sidebar:
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
             <div style="display: flex; align-items: center;">
                 <div style="width: 0.75rem; height: 0.75rem; background-color: #fb923c; border-radius: 0.125rem; margin-right: 0.5rem;"></div>
-                <span style="font-size: 0.875rem;">Waithaka</span>
+                <span style="font-size: 0.875rem; color: #000000;">Waithaka</span>
             </div>
-            <span style="font-weight: 600; font-size: 0.875rem;">72.5%</span>
+            <span style="font-weight: 600; font-size: 0.875rem; color: #000000;">72.5%</span>
         </div>
         """, unsafe_allow_html=True)
     
@@ -619,9 +645,9 @@ with col_sidebar:
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
             <div style="display: flex; align-items: center;">
                 <div style="width: 0.75rem; height: 0.75rem; background-color: #3b82f6; border-radius: 0.125rem; margin-right: 0.5rem;"></div>
-                <span style="font-size: 0.875rem;">Max</span>
+                <span style="font-size: 0.875rem; color: #000000;">Max</span>
             </div>
-            <span style="font-weight: 600; font-size: 0.875rem;">65.3%</span>
+            <span style="font-weight: 600; font-size: 0.875rem; color: #000000;">65.3%</span>
         </div>
         """, unsafe_allow_html=True)
     
@@ -630,9 +656,9 @@ with col_sidebar:
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
             <div style="display: flex; align-items: center;">
                 <div style="width: 0.75rem; height: 0.75rem; background-color: #9ca3af; border-radius: 0.125rem; margin-right: 0.5rem;"></div>
-                <span style="font-size: 0.875rem;">Wallace</span>
+                <span style="font-size: 0.875rem; color: #000000;">Wallace</span>
             </div>
-            <span style="font-weight: 600; font-size: 0.875rem;">58.7%</span>
+            <span style="font-weight: 600; font-size: 0.875rem; color: #000000;">58.7%</span>
         </div>
         """, unsafe_allow_html=True)
     
@@ -697,11 +723,11 @@ with col_sidebar:
         elif val == '40%':
             return 'background-color: #ef4444; color: white; text-align: center; font-weight: bold; padding: 8px; border-radius: 4px;'
         else:
-            return 'background-color: #f3f4f6; text-align: center; font-weight: 500; padding: 12px;'
+            return 'background-color: #f3f4f6; text-align: center; font-weight: 500; padding: 12px; color: #000000;'
     
     # Display the styled dataframe
     styled_df = perf_df.style.applymap(style_performance, subset=['Waithaka', 'Wallace', 'Max'])
-    styled_df = styled_df.applymap(lambda x: 'background-color: #f3f4f6; text-align: center; font-weight: 500; padding: 12px;', subset=['Instrument'])
+    styled_df = styled_df.applymap(lambda x: 'background-color: #f3f4f6; text-align: center; font-weight: 500; padding: 12px; color: #000000;', subset=['Instrument'])
     
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
