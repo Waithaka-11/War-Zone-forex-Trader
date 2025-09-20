@@ -1,30 +1,4 @@
-# Create DataFrame for the table
-    df_trades = pd.DataFrame(st.session_state.trades)
-    
-    # Format the dataframe for display
-    if not df_trades.empty:
-        display_df = df_trades.copy()
-        
-        # Add a delete column with proper icon styling
-        delete_buttons = []
-        for i in range(len(display_df)):
-            delete_buttons.append('🗑️')
-        
-        display_df['Actions'] = delete_buttons
-        
-        # Custom styling for the dataframe
-        def color_result(val):
-            if val == 'Win':
-                return 'background-color: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 12px; font-weight: 500;'
-            elif val == 'Loss':
-                return 'background-color: #fee2e2; color: #dc2626; padding: 4px 8px; border-radius: 12px; font-weight: 500;'
-            else:
-                return ''
-        
-        # Apply custom CSS for delete buttons
-        st.markdown("""
-        <style>
-        .stimport streamlit as st
+import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
@@ -540,17 +514,41 @@ with col_main:
     # Format the dataframe for display
     if not df_trades.empty:
         display_df = df_trades.copy()
-        display_df['Actions'] = '🗑️'
+        
+        # Add a delete column with proper icon styling
+        delete_buttons = []
+        for i in range(len(display_df)):
+            delete_buttons.append('🗑️')
+        
+        display_df['Actions'] = delete_buttons
         
         # Custom styling for the dataframe
         def color_result(val):
             if val == 'Win':
                 return 'background-color: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 12px; font-weight: 500;'
-            else:
+            elif val == 'Loss':
                 return 'background-color: #fee2e2; color: #dc2626; padding: 4px 8px; border-radius: 12px; font-weight: 500;'
+            else:
+                return ''
+        
+        # Apply custom CSS for delete buttons
+        st.markdown("""
+        <style>
+        .stDataFrame [data-testid="column"]:last-child div[data-testid="cell"] {
+            background-color: #ef4444 !important;
+            color: white !important;
+            text-align: center !important;
+            cursor: pointer !important;
+            border-radius: 4px !important;
+        }
+        .stDataFrame [data-testid="column"]:last-child div[data-testid="cell"]:hover {
+            background-color: #dc2626 !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
         
         st.dataframe(
-            display_df[['date', 'trader', 'instrument', 'entry', 'sl', 'target', 'risk', 'reward', 'rrRatio', 'outcome', 'result']].rename(columns={
+            display_df[['date', 'trader', 'instrument', 'entry', 'sl', 'target', 'risk', 'reward', 'rrRatio', 'outcome', 'result', 'Actions']].rename(columns={
                 'date': 'Date',
                 'trader': 'Trader', 
                 'instrument': 'Instrument',
@@ -561,17 +559,20 @@ with col_main:
                 'reward': 'Reward',
                 'rrRatio': 'R/R Ratio',
                 'outcome': 'Outcome',
-                'result': 'Result'
+                'result': 'Result',
+                'Actions': 'Actions'
             }),
             use_container_width=True,
             hide_index=True
         )
         
-        # Delete functionality
-        if st.button("🗑️ Delete Last Trade", type="secondary"):
-            if st.session_state.trades:
-                st.session_state.trades.pop()
-                st.rerun()
+        # Delete functionality with red background
+        col_del1, col_del2 = st.columns([3, 1])
+        with col_del2:
+            if st.button("🗑️ Delete Last Trade", type="secondary", help="Delete the most recent trade"):
+                if st.session_state.trades:
+                    st.session_state.trades.pop()
+                    st.rerun()
 
 with col_sidebar:
     # Performance Metrics
