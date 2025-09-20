@@ -6,7 +6,7 @@ if rankings and len(rankings) > 0:
         # Calculate average win rate
 avg_win_rate = sum(values) / len(values) if values else 0
         
-        fig_donut = go.Figure(data=[go.Pie(
+fig_donut = go.Figure(data=[go.Pie(
             labels=labels, 
             values=values, 
             hole=0.6,
@@ -1266,5 +1266,6 @@ st.markdown(f"""
     <p>Last updated: {current_time}</p>
 </div>
 """, unsafe_allow_html=True)
+
 
 
