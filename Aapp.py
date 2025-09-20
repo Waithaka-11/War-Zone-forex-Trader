@@ -412,6 +412,56 @@ st.markdown("""
 
 st.markdown('<div class="main-content">', unsafe_allow_html=True)
 
+# Refresh Controls at the top
+refresh_col1, refresh_col2, refresh_col3 = st.columns([1, 2, 1])
+
+with refresh_col2:
+    refresh_container = st.container()
+    with refresh_container:
+        button_col, timer_col = st.columns([1, 2])
+        
+        with button_col:
+            if st.button("🔄 Refresh Data", type="primary", use_container_width=True):
+                with st.spinner("Refreshing..."):
+                    force_refresh_data()
+                    st.success("Data refreshed!")
+                    time.sleep(1)
+                    st.rerun()
+        
+        with timer_col:
+            if st.session_state.sheets_connected:
+                # Calculate time until next auto-refresh
+                time_since_last = time.time() - st.session_state.get('last_auto_refresh', 0)
+                time_until_next = max(0, REAL_TIME_UPDATE_INTERVAL - time_since_last)
+                
+                if time_until_next > 0:
+                    minutes = int(time_until_next // 60)
+                    seconds = int(time_until_next % 60)
+                    if minutes > 0:
+                        next_refresh_text = f"Next auto-refresh in {minutes}m {seconds}s"
+                    else:
+                        next_refresh_text = f"Next auto-refresh in {seconds}s"
+                else:
+                    next_refresh_text = "Auto-refreshing now..."
+                
+                st.markdown(f"""
+                <div style="display: flex; align-items: center; height: 2.5rem; padding-left: 1rem;">
+                    <span style="color: #10b981; font-size: 0.875rem; font-weight: 500;">
+                        ⚡ {next_refresh_text}
+                    </span>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown("""
+                <div style="display: flex; align-items: center; height: 2.5rem; padding-left: 1rem;">
+                    <span style="color: #6b7280; font-size: 0.875rem;">
+                        📱 Local mode - Manual refresh only
+                    </span>
+                </div>
+                """, unsafe_allow_html=True)
+
+st.markdown("---")
+
 # Add New Trade Section
 st.markdown("""
 <div class="trade-card">
