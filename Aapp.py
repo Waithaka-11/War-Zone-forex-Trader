@@ -41,7 +41,8 @@ def load_trades_from_sheets():
             return load_fallback_data()
         
         # Open the spreadsheet
-        sheet = gc.open(SHEET_NAME).worksheet(WORKSHEET_NAME)
+        spreadsheet = gc.open(SHEET_NAME)
+        sheet = spreadsheet.worksheet(WORKSHEET_NAME)
         
         # Get all records
         records = sheet.get_all_records()
@@ -49,10 +50,42 @@ def load_trades_from_sheets():
         if not records:
             return load_fallback_data()
         
-        return records
+        # Convert string values back to appropriate types
+        processed_records = []
+        for record in records:
+            try:
+                processed_record = {
+                    'id': int(record.get('id', 0)),
+                    'date': str(record.get('date', '')),
+                    'trader': str(record.get('trader', '')),
+                    'instrument': str(record.get('instrument', '')),
+                    'entry': float(record.get('entry', 0)),
+                    'sl': float(record.get('sl', 0)),
+                    'target': float(record.get('target', 0)),
+                    'risk': float(record.get('risk', 0)),
+                    'reward': float(record.get('reward', 0)),
+                    'rrRatio': float(record.get('rrRatio', 0)),
+                    'outcome': str(record.get('outcome', '')),
+                    'result': str(record.get('result', ''))
+                }
+                processed_records.append(processed_record)
+            except (ValueError, TypeError) as e:
+                st.warning(f"Skipped malformed record: {record}. Error: {e}")
+                continue
         
+        return processed_records
+        
+    except gspread.exceptions.SpreadsheetNotFound:
+        st.warning(f"Spreadsheet '{SHEET_NAME}' not found. Using fallback data.")
+        return load_fallback_data()
+    except gspread.exceptions.WorksheetNotFound:
+        st.warning(f"Worksheet '{WORKSHEET_NAME}' not found. Using fallback data.")
+        return load_fallback_data()
+    except gspread.exceptions.APIError as e:
+        st.warning(f"Google Sheets API Error: {e}. Using fallback data.")
+        return load_fallback_data()
     except Exception as e:
-        st.error(f"Error loading from Google Sheets: {e}")
+        st.warning(f"Error loading from Google Sheets: {e}. Using fallback data.")
         return load_fallback_data()
 
 def save_trade_to_sheets(trade_data):
@@ -62,30 +95,53 @@ def save_trade_to_sheets(trade_data):
         if gc is None:
             return False
         
-        sheet = gc.open(SHEET_NAME).worksheet(WORKSHEET_NAME)
+        # Open the spreadsheet and worksheet
+        spreadsheet = gc.open(SHEET_NAME)
+        sheet = spreadsheet.worksheet(WORKSHEET_NAME)
         
         # Prepare row data in the same order as headers
         row_data = [
-            trade_data['id'],
-            trade_data['date'],
-            trade_data['trader'],
-            trade_data['instrument'],
-            trade_data['entry'],
-            trade_data['sl'],
-            trade_data['target'],
-            trade_data['risk'],
-            trade_data['reward'],
-            trade_data['rrRatio'],
-            trade_data['outcome'],
-            trade_data['result']
+            str(trade_data['id']),
+            str(trade_data['date']),
+            str(trade_data['trader']),
+            str(trade_data['instrument']),
+            float(trade_data['entry']),
+            float(trade_data['sl']),
+            float(trade_data['target']),
+            float(trade_data['risk']),
+            float(trade_data['reward']),
+            float(trade_data['rrRatio']),
+            str(trade_data['outcome']),
+            str(trade_data['result'])
         ]
         
-        # Add the row
-        sheet.append_row(row_data)
-        return True
+        # Add the row and verify it was added
+        response = sheet.append_row(row_data, value_input_option='RAW')
         
+        # Check if the response indicates success
+        if response and 'updates' in response:
+            return True
+        else:
+            # Even if response format is different, try to verify the row was added
+            time.sleep(1)  # Brief delay to allow for propagation
+            all_records = sheet.get_all_records()
+            # Check if our trade was added (look for matching ID)
+            for record in all_records:
+                if str(record.get('id', '')) == str(trade_data['id']):
+                    return True
+            return False
+        
+    except gspread.exceptions.SpreadsheetNotFound:
+        st.error("Spreadsheet not found. Please check the SHEET_NAME or create the spreadsheet.")
+        return False
+    except gspread.exceptions.WorksheetNotFound:
+        st.error("Worksheet not found. Please check the WORKSHEET_NAME or create the worksheet.")
+        return False
+    except gspread.exceptions.APIError as e:
+        st.error(f"Google Sheets API Error: {e}")
+        return False
     except Exception as e:
-        st.error(f"Error saving to Google Sheets: {e}")
+        st.error(f"Unexpected error saving to Google Sheets: {e}")
         return False
 
 def delete_trade_from_sheets(trade_id):
@@ -95,20 +151,33 @@ def delete_trade_from_sheets(trade_id):
         if gc is None:
             return False
         
-        sheet = gc.open(SHEET_NAME).worksheet(WORKSHEET_NAME)
+        spreadsheet = gc.open(SHEET_NAME)
+        sheet = spreadsheet.worksheet(WORKSHEET_NAME)
         
         # Find the row with the trade ID
-        records = sheet.get_all_records()
-        for i, record in enumerate(records):
-            if record.get('id') == trade_id:
-                # Delete row (add 2 because of header row and 0-based indexing)
-                sheet.delete_rows(i + 2)
+        try:
+            cell = sheet.find(str(trade_id))
+            if cell and cell.col == 1:  # Make sure it's in the ID column
+                sheet.delete_rows(cell.row)
                 return True
+            else:
+                st.error(f"Trade ID {trade_id} not found in spreadsheet.")
+                return False
+        except gspread.exceptions.CellNotFound:
+            st.error(f"Trade ID {trade_id} not found in spreadsheet.")
+            return False
         
+    except gspread.exceptions.SpreadsheetNotFound:
+        st.error("Spreadsheet not found. Please check the SHEET_NAME.")
         return False
-        
+    except gspread.exceptions.WorksheetNotFound:
+        st.error("Worksheet not found. Please check the WORKSHEET_NAME.")
+        return False
+    except gspread.exceptions.APIError as e:
+        st.error(f"Google Sheets API Error: {e}")
+        return False
     except Exception as e:
-        st.error(f"Error deleting from Google Sheets: {e}")
+        st.error(f"Unexpected error deleting from Google Sheets: {e}")
         return False
 
 def setup_google_sheet():
@@ -116,33 +185,58 @@ def setup_google_sheet():
     try:
         gc = init_connection()
         if gc is None:
+            st.error("Cannot setup Google Sheets - connection failed.")
             return False
         
         # Try to open existing sheet
         try:
             spreadsheet = gc.open(SHEET_NAME)
+            st.info(f"Found existing spreadsheet: {SHEET_NAME}")
         except gspread.SpreadsheetNotFound:
             # Create new spreadsheet
+            st.info(f"Creating new spreadsheet: {SHEET_NAME}")
             spreadsheet = gc.create(SHEET_NAME)
-            # Share with your email (replace with your email)
+            st.success(f"✅ Created new spreadsheet: {SHEET_NAME}")
+            
+            # Note: Uncomment and replace with your email to auto-share
             # spreadsheet.share('your-email@gmail.com', perm_type='user', role='writer')
         
         # Try to get the worksheet
         try:
             worksheet = spreadsheet.worksheet(WORKSHEET_NAME)
+            st.info(f"Found existing worksheet: {WORKSHEET_NAME}")
         except gspread.WorksheetNotFound:
             # Create new worksheet
+            st.info(f"Creating new worksheet: {WORKSHEET_NAME}")
             worksheet = spreadsheet.add_worksheet(title=WORKSHEET_NAME, rows=1000, cols=12)
+            st.success(f"✅ Created new worksheet: {WORKSHEET_NAME}")
         
-        # Set headers if the sheet is empty
-        if not worksheet.get_all_records():
-            headers = ['id', 'date', 'trader', 'instrument', 'entry', 'sl', 'target', 'risk', 'reward', 'rrRatio', 'outcome', 'result']
-            worksheet.append_row(headers)
+        # Check if headers exist
+        try:
+            headers = worksheet.row_values(1)
+            if not headers or len(headers) == 0:
+                # Set headers
+                headers = ['id', 'date', 'trader', 'instrument', 'entry', 'sl', 'target', 'risk', 'reward', 'rrRatio', 'outcome', 'result']
+                worksheet.append_row(headers)
+                st.success("✅ Added column headers to worksheet")
+            else:
+                st.info("Headers already exist in worksheet")
+        except Exception as e:
+            st.warning(f"Could not check/set headers: {e}")
+        
+        # Get the spreadsheet URL for user reference
+        spreadsheet_url = f"https://docs.google.com/spreadsheets/d/{spreadsheet.id}"
+        st.success(f"🔗 Your Google Sheet is ready!")
+        st.info(f"📋 Spreadsheet URL: {spreadsheet_url}")
+        st.info("💡 Make sure to share this spreadsheet with your service account email for full access.")
         
         return True
         
+    except gspread.exceptions.APIError as e:
+        st.error(f"Google Sheets API Error during setup: {e}")
+        return False
     except Exception as e:
-        st.error(f"Error setting up Google Sheet: {e}")
+        st.error(f"Unexpected error during Google Sheets setup: {e}")
         return False
 
 def load_fallback_data():
