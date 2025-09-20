@@ -48,36 +48,63 @@ def load_trades_from_sheets():
         spreadsheet = gc.open(SHEET_NAME)
         sheet = spreadsheet.worksheet(WORKSHEET_NAME)
         
-        # Get all records
-        records = sheet.get_all_records()
+        # Get all values as a list of lists first
+        all_values = sheet.get_all_values()
         
-        if not records:
+        if not all_values or len(all_values) < 2:  # No data or just headers
             return load_fallback_data()
         
-        # Convert string values back to appropriate types
+        # First row should be headers
+        headers = all_values[0]
+        data_rows = all_values[1:]
+        
+        # Expected headers
+        expected_headers = ['id', 'date', 'trader', 'instrument', 'entry', 'sl', 'target', 'risk', 'reward', 'rrRatio', 'outcome', 'result']
+        
+        # If headers don't match expected, try to fix or skip
+        if headers != expected_headers:
+            st.warning(f"Headers mismatch. Found: {headers[:6]}... Expected: {expected_headers[:6]}...")
+            # Try to use the data anyway if it has the right number of columns
+            if len(headers) < 12:
+                st.error("Not enough columns in spreadsheet. Please run setup again.")
+                return load_fallback_data()
+        
+        # Process each data row
         processed_records = []
-        for record in records:
+        for i, row in enumerate(data_rows):
+            # Skip empty rows
+            if not any(str(cell).strip() for cell in row):
+                continue
+                
             try:
+                # Ensure row has enough columns
+                while len(row) < 12:
+                    row.append('')
+                
                 processed_record = {
-                    'id': int(record.get('id', 0)),
-                    'date': str(record.get('date', '')),
-                    'trader': str(record.get('trader', '')),
-                    'instrument': str(record.get('instrument', '')),
-                    'entry': float(record.get('entry', 0)),
-                    'sl': float(record.get('sl', 0)),
-                    'target': float(record.get('target', 0)),
-                    'risk': float(record.get('risk', 0)),
-                    'reward': float(record.get('reward', 0)),
-                    'rrRatio': float(record.get('rrRatio', 0)),
-                    'outcome': str(record.get('outcome', '')),
-                    'result': str(record.get('result', ''))
+                    'id': int(row[0]) if row[0] and str(row[0]).strip().isdigit() else i + 1,
+                    'date': str(row[1]).strip() if row[1] else '',
+                    'trader': str(row[2]).strip() if row[2] else '',
+                    'instrument': str(row[3]).strip() if row[3] else '',
+                    'entry': float(row[4]) if row[4] and str(row[4]).replace('.', '').replace('-', '').isdigit() else 0.0,
+                    'sl': float(row[5]) if row[5] and str(row[5]).replace('.', '').replace('-', '').isdigit() else 0.0,
+                    'target': float(row[6]) if row[6] and str(row[6]).replace('.', '').replace('-', '').isdigit() else 0.0,
+                    'risk': float(row[7]) if row[7] and str(row[7]).replace('.', '').replace('-', '').isdigit() else 0.0,
+                    'reward': float(row[8]) if row[8] and str(row[8]).replace('.', '').replace('-', '').isdigit() else 0.0,
+                    'rrRatio': float(row[9]) if row[9] and str(row[9]).replace('.', '').replace('-', '').isdigit() else 0.0,
+                    'outcome': str(row[10]).strip() if row[10] else '',
+                    'result': str(row[11]).strip() if row[11] else ''
                 }
-                processed_records.append(processed_record)
-            except (ValueError, TypeError) as e:
-                st.warning(f"Skipped malformed record: {record}. Error: {e}")
+                
+                # Only add records that have meaningful data
+                if processed_record['trader'] and processed_record['instrument']:
+                    processed_records.append(processed_record)
+                    
+            except (ValueError, TypeError, IndexError) as e:
+                st.warning(f"Skipped row {i+2}: {e}. Row data: {row[:6]}...")
                 continue
         
-        return processed_records
+        return processed_records if processed_records else load_fallback_data()
         
     except gspread.exceptions.SpreadsheetNotFound:
         st.warning(f"Spreadsheet '{SHEET_NAME}' not found. Using fallback data.")
@@ -757,7 +784,38 @@ with col8:
 
 st.markdown('</div></div>', unsafe_allow_html=True)
 
-# Real-time sync status and manual refresh
+# Debug section - show current state
+st.markdown("---")
+st.markdown("### 🔍 Debug Information")
+
+debug_col1, debug_col2, debug_col3 = st.columns(3)
+
+with debug_col1:
+    st.markdown(f"""
+    **Connection Status:**
+    - Google Sheets: {'✅ Connected' if st.session_state.sheets_connected else '❌ Not Connected'}
+    - Total Trades: {len(st.session_state.trades) if st.session_state.trades else 0}
+    """)
+
+with debug_col2:
+    st.markdown(f"""
+    **Session State:**
+    - Trades exist: {'✅ Yes' if 'trades' in st.session_state else '❌ No'}
+    - Auto-refresh: {'✅ Enabled' if st.session_state.get('auto_refresh_toggle', True) else '❌ Disabled'}
+    """)
+
+with debug_col3:
+    if st.button("🔄 Force Refresh Session", help="Clear cache and reload data"):
+        st.cache_data.clear()
+        st.session_state.trades = load_trades_from_sheets()
+        st.success("Session refreshed!")
+        st.rerun()
+
+# Show current trades in debug format
+if st.session_state.trades:
+    with st.expander("📊 Current Trades Data (Debug)", expanded=False):
+        for i, trade in enumerate(st.session_state.trades):
+            st.write(f"**Trade {i+1}:**", trade)
 sync_col1, sync_col2, sync_col3, sync_col4 = st.columns([2, 1, 1, 6])
 
 with sync_col1:
