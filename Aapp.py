@@ -1,80 +1,4 @@
-with col_sidebar:
-    # Performance Metrics
-    st.markdown("""
-    <div style="background: white; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem;">
-        <div style="background-color: #334155; color: white; padding: 0.75rem 1rem; border-radius: 0.5rem 0.5rem 0 0; display: flex; align-items: center;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.5rem;">
-                <path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path>
-                <path d="M22 12A10 10 0 0 0 12 2v10z"></path>
-            </svg>
-            <h3 style="font-weight: 600; margin: 0; font-size: 1rem;">Performance Metrics</h3>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("""
-    <div style="background-color: #475569; color: white; padding: 0.75rem; font-size: 0.875rem; font-weight: 500; margin: -1.5rem -1rem 0 -1rem;">
-        Overall Win Rate Distribution
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Create dynamic donut chart based on current data
-    if rankings and len(rankings) > 0:
-        labels = [r['name'] for r in rankings[:3]]  # Top 3 traders
-        values = [r['win_rate'] for r in rankings[:3]]
-        colors = ['#fb923c', '#3b82f6', '#9ca3af']
-        
-        # Calculate average win rate
-        avg_win_rate = sum(values) / len(values) if values else 0
-        
-        fig_donut = go.Figure(data=[go.Pie(
-            labels=labels, 
-            values=values, 
-            hole=0.6,
-            marker=dict(colors=colors[:len(labels)], line=dict(color='#FFFFFF', width=2)),
-            textinfo='none',
-            hovertemplate='<b>%{label}</b><br>Win Rate: %{value}%<extra></extra>'
-        )])
-        
-        fig_donut.update_layout(
-            showlegend=False,
-            height=300,
-            margin=dict(t=20, b=20, l=20, r=20),
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
-            annotations=[
-                dict(
-                    text=f'<b>{avg_win_rate:.1f}%</b><br><span style="font-size:12px; color:#6b7280;">Avg Rate</span>', 
-                    x=0.5, y=0.5, 
-                    font_size=20, 
-                    showarrow=False,
-                    font_color='#374151'
-                )
-            ]
-        )
-        
-        st.plotly_chart(fig_donut, use_container_width=True)
-        
-        # Dynamic Legend
-        if len(rankings) >= 1:
-            legend_cols = st.columns(min(3, len(rankings)))
-            
-            for i, ranking in enumerate(rankings[:3]):
-                if i < len(legend_cols):
-                    with legend_cols[i]:
-                        color = colors[i] if i < len(colors) else '#6b7280'
-                        st.markdown(f"""
-                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
-                            <div style="display: flex; align-items: center;">
-                                <div style="width: 0.75rem; height: 0.75rem; background-color: {color}; border-radius: 0.125rem; margin-right: 0.5rem;"></div>
-                                <span style="font-size: 0.875rem; color: #000000;">{ranking['name']}</span>
-                            </div>
-                            <span style="font-weight: 600; font-size: 0.875rem; color: #000000;">{ranking['win_rate']}%</span>
-                        </div>
-                        """, unsafe_allow_html=True)
-    else:
-        st.info("No data available for performance metrics. Add some trades to see analytics!")
-            import streamlit as st
+import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
@@ -90,10 +14,9 @@ import time
 SHEET_NAME = "Forex Trading Analytics"
 WORKSHEET_NAME = "Trades"
 
-# You can also try these common worksheet names if "Trades" doesn't work:
-# WORKSHEET_NAME = "Sheet1"  # Default Google Sheets name
-# WORKSHEET_NAME = "Trading Data"
-# WORKSHEET_NAME = "Forex Trades"
+# Real-time update configuration
+REAL_TIME_UPDATE_INTERVAL = 3  # Update every 3 seconds
+CACHE_TTL = 5  # Cache data for only 5 seconds
 
 # Initialize Google Sheets connection
 @st.cache_resource
@@ -113,9 +36,9 @@ def init_connection():
         st.error(f"Failed to connect to Google Sheets: {e}")
         return None
 
-@st.cache_data(ttl=30)  # Cache for 30 seconds to allow real-time updates
+@st.cache_data(ttl=CACHE_TTL)  # Much shorter cache - 5 seconds only
 def load_trades_from_sheets():
-    """Load trades from Google Sheets"""
+    """Load trades from Google Sheets with minimal caching for real-time updates"""
     try:
         gc = init_connection()
         if gc is None:
@@ -361,17 +284,44 @@ def load_fallback_data():
         { 'id': 4, 'date': '2023-10-05', 'trader': 'Waithaka', 'instrument': 'EURUSD', 'entry': 1.06250, 'sl': 1.06000, 'target': 1.06700, 'risk': 0.00250, 'reward': 0.00450, 'rrRatio': 1.80, 'outcome': 'Target Hit', 'result': 'Win' }
     ]
 
-# Auto-refresh functionality for real-time updates
-def auto_refresh():
-    """Auto-refresh data every 30 seconds"""
-    if 'last_refresh' not in st.session_state:
-        st.session_state.last_refresh = time.time()
-    
-    # Refresh every 30 seconds
-    if time.time() - st.session_state.last_refresh > 30:
-        st.session_state.last_refresh = time.time()
+# Real-time update functions
+def force_refresh_data():
+    """Force refresh data from Google Sheets and update session state"""
+    try:
         st.cache_data.clear()
-        st.rerun()
+        if st.session_state.sheets_connected:
+            fresh_data = load_trades_from_sheets()
+            st.session_state.trades = fresh_data
+            return True
+        return False
+    except Exception as e:
+        st.error(f"Error refreshing data: {e}")
+        return False
+
+def auto_refresh_trades():
+    """Auto-refresh trades data for real-time updates"""
+    if 'last_auto_refresh' not in st.session_state:
+        st.session_state.last_auto_refresh = time.time()
+        
+    # Auto-refresh every few seconds if Google Sheets is connected and toggle is enabled
+    if (st.session_state.sheets_connected and 
+        st.session_state.get('auto_refresh_toggle', True) and 
+        time.time() - st.session_state.last_auto_refresh > REAL_TIME_UPDATE_INTERVAL):
+        
+        st.session_state.last_auto_refresh = time.time()
+        
+        # Get fresh data from Google Sheets
+        try:
+            st.cache_data.clear()
+            fresh_data = load_trades_from_sheets()
+            
+            # Only update and rerun if data actually changed
+            if 'trades' not in st.session_state or st.session_state.trades != fresh_data:
+                st.session_state.trades = fresh_data
+                st.rerun()
+        except Exception as e:
+            # Silently handle refresh errors to avoid disrupting user experience
+            pass
 
 # Page configuration
 st.set_page_config(
@@ -381,15 +331,13 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Custom CSS (keeping the same as original)
+# Custom CSS
 st.markdown("""
 <style>
-    /* Main container styling */
     .stApp {
         background-color: #f3f4f6;
     }
     
-    /* Header styling */
     .main-header {
         background-color: #334155;
         color: white;
@@ -428,7 +376,6 @@ st.markdown("""
         background-color: #475569;
     }
     
-    /* Card styling */
     .trade-card {
         background: white;
         border-radius: 0.5rem;
@@ -450,7 +397,6 @@ st.markdown("""
         padding: 1.5rem;
     }
     
-    /* Connection status */
     .connection-status {
         position: fixed;
         top: 80px;
@@ -474,23 +420,6 @@ st.markdown("""
         border: 1px solid #fecaca;
     }
     
-    /* Form styling */
-    .form-row {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 1.5rem;
-        margin-bottom: 1.5rem;
-    }
-    
-    .form-group label {
-        display: block;
-        font-size: 0.875rem;
-        font-weight: 500;
-        color: #374151;
-        margin-bottom: 0.5rem;
-    }
-    
-    /* Rankings styling */
     .rank-item {
         display: flex;
         align-items: center;
@@ -531,14 +460,12 @@ st.markdown("""
         transition: width 0.3s ease;
     }
     
-    /* Hide streamlit elements */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
     
     .stDeployButton {display: none;}
     
-    /* Custom spacing */
     .main-content {
         padding: 1.5rem;
         max-width: 90rem;
@@ -547,15 +474,16 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Initialize session state
+# Initialize session state for trades with real-time data
 if 'trades' not in st.session_state:
     st.session_state.trades = load_trades_from_sheets()
     
 if 'sheets_connected' not in st.session_state:
     st.session_state.sheets_connected = init_connection() is not None
 
-# Auto-refresh for real-time updates
-auto_refresh()
+# Enable real-time updates when connected to Google Sheets
+if st.session_state.sheets_connected:
+    auto_refresh_trades()
 
 # Connection status indicator
 connection_class = "status-connected" if st.session_state.sheets_connected else "status-disconnected"
@@ -598,7 +526,6 @@ st.markdown('<div class="main-content">', unsafe_allow_html=True)
 if not st.session_state.sheets_connected:
     st.warning("⚠️ Google Sheets not connected. Using local data only.")
     
-    # Make the setup button more prominent
     st.markdown("""
     <div style="background-color: #fef3c7; border: 1px solid #f59e0b; border-radius: 0.5rem; padding: 1rem; margin: 1rem 0;">
         <h4 style="color: #92400e; margin: 0 0 0.5rem 0;">🚀 Ready to Enable Cloud Sync?</h4>
@@ -614,9 +541,9 @@ if not st.session_state.sheets_connected:
             with st.spinner("🔄 Setting up your Google Sheets integration..."):
                 if setup_google_sheet():
                     st.session_state.sheets_connected = True
-                    st.cache_data.clear()  # Clear cache to reload data
-                    st.balloons()  # Celebration animation!
-                    time.sleep(3)  # Give user time to see all the success messages
+                    st.cache_data.clear()
+                    st.balloons()
+                    time.sleep(3)
                     st.rerun()
                 else:
                     st.error("❌ Setup failed. Please check the error messages above and try again.")
@@ -638,7 +565,6 @@ else:
     
     col_info1, col_info2, col_info3 = st.columns([1, 2, 1])
     with col_info2:        
-        # Add a test connection button
         if st.button("🔍 Test Connection & View Sheet", use_container_width=True):
             try:
                 gc = init_connection()
@@ -647,23 +573,19 @@ else:
                         spreadsheet = gc.open(SHEET_NAME)
                         st.success(f"✅ Successfully connected to spreadsheet: '{SHEET_NAME}'")
                         
-                        # List all available worksheets
                         worksheets = spreadsheet.worksheets()
                         worksheet_names = [ws.title for ws in worksheets]
                         st.info(f"📋 Available worksheets: {', '.join(worksheet_names)}")
                         
-                        # Try to access the target worksheet
                         try:
                             worksheet = spreadsheet.worksheet(WORKSHEET_NAME)
                             st.success(f"✅ Successfully accessed worksheet: '{WORKSHEET_NAME}'")
                             
-                            # Try to get records
                             try:
                                 records = worksheet.get_all_records()
                                 record_count = len(records)
                                 st.success(f"✅ Found {record_count} trades in the worksheet")
                                 
-                                # Show first few column headers to verify structure
                                 if records:
                                     headers = list(records[0].keys()) if records else worksheet.row_values(1)
                                     st.info(f"📊 Column headers: {', '.join(headers[:6])}{'...' if len(headers) > 6 else ''}")
@@ -684,7 +606,6 @@ else:
                         except Exception as ws_error:
                             st.error(f"❌ Error accessing worksheet: {str(ws_error)}")
                         
-                        # Always show the spreadsheet URL
                         spreadsheet_url = f"https://docs.google.com/spreadsheets/d/{spreadsheet.id}"
                         st.markdown(f"🔗 **[Open your Google Sheet in browser]({spreadsheet_url})**")
                         
@@ -698,7 +619,6 @@ else:
                     st.info("💡 Check your credentials in secrets.toml")
                     
             except Exception as e:
-                # Don't show the raw response object, parse it better
                 error_msg = str(e)
                 if "Response [200]" in error_msg:
                     st.success("✅ Connection successful! (Response 200 indicates success)")
@@ -791,35 +711,33 @@ with col8:
             
             # Save to Google Sheets first
             if st.session_state.sheets_connected:
-                    try:
-                        success = save_trade_to_sheets(new_trade)
-                        st.session_state.trades.append(new_trade)
+                try:
+                    success = save_trade_to_sheets(new_trade)
+                    st.session_state.trades.append(new_trade)
+                    
+                    if success:
+                        st.success("✅ Trade added successfully and synced to Google Sheets!")
+                        force_refresh_data()
+                        time.sleep(0.5)
+                    else:
+                        st.warning("⚠️ Trade added locally but Google Sheets sync may have failed.")
                         
-                        if success:
-                            st.success("✅ Trade added successfully and synced to Google Sheets!")
-                            # Force immediate refresh and clear form
-                            force_refresh_data()
-                            time.sleep(0.5)  # Brief delay to ensure sync propagation
-                        else:
-                            st.warning("⚠️ Trade added locally but Google Sheets sync may have failed.")
-                            
-                        # Always rerun to update the UI with new trade
-                        st.rerun()
+                    st.rerun()
                         
-                    except Exception as e:
-                        st.session_state.trades.append(new_trade)
-                        error_msg = str(e)
-                        if "Response [200]" in error_msg:
-                            st.success("✅ Trade added and synced successfully!")
-                            force_refresh_data()
-                        else:
-                            st.error(f"❌ Error syncing to Google Sheets: {error_msg}")
-                            st.warning("⚠️ Trade added locally only")
-                        st.rerun()
+                except Exception as e:
+                    st.session_state.trades.append(new_trade)
+                    error_msg = str(e)
+                    if "Response [200]" in error_msg:
+                        st.success("✅ Trade added and synced successfully!")
+                        force_refresh_data()
+                    else:
+                        st.error(f"❌ Error syncing to Google Sheets: {error_msg}")
+                        st.warning("⚠️ Trade added locally only")
+                    st.rerun()
             else:
                 st.session_state.trades.append(new_trade)
                 st.warning("⚠️ Trade added locally only (Google Sheets not connected)")
-            
+                st.rerun()
         else:
             st.error("Please fill in all fields to add a trade.")
 
@@ -842,14 +760,13 @@ with sync_col2:
                 st.success("Data refreshed!")
             else:
                 st.warning("Refresh completed (local data)")
-            time.sleep(1)  # Show the message briefly
+            time.sleep(1)
             st.rerun()
 
 with sync_col3:
-    # Auto-refresh toggle
     auto_refresh_enabled = st.checkbox("⚡", value=True, help="Enable/disable auto-refresh (every 3 seconds)", key="auto_refresh_toggle")
     if not auto_refresh_enabled:
-        st.session_state.last_auto_refresh = 0  # Disable auto-refresh
+        st.session_state.last_auto_refresh = 0
 
 # Main Content Grid
 col_main, col_sidebar = st.columns([2, 1])
@@ -870,7 +787,7 @@ with col_main:
         # Calculate win rates and sort
         rankings = []
         for trader, stats in trader_stats.items():
-            if stats['total'] > 0:  # Only include traders with trades
+            if stats['total'] > 0:
                 win_rate = (stats['wins'] / stats['total']) * 100
                 rankings.append({
                     'name': trader,
@@ -897,7 +814,7 @@ with col_main:
     
     if rankings and len(rankings) > 0:
         for ranking in rankings:
-            rank_class = f"rank-{min(ranking['rank'], 3)}"  # Cap at 3 for styling
+            rank_class = f"rank-{min(ranking['rank'], 3)}"
             st.markdown(f"""
             <div class="rank-item">
                 <div class="rank-number {rank_class}">{ranking['rank']}</div>
@@ -989,7 +906,6 @@ with col_main:
                             
                             if success:
                                 st.success("✅ Trade deleted and synced!")
-                                # Force immediate refresh for real-time sync
                                 force_refresh_data()
                             else:
                                 st.warning("⚠️ Trade deleted locally, but Google Sheets sync may have failed")
@@ -1032,11 +948,10 @@ with col_sidebar:
     
     # Create dynamic donut chart based on current data
     if rankings and len(rankings) > 0:
-        labels = [r['name'] for r in rankings[:3]]  # Top 3 traders
+        labels = [r['name'] for r in rankings[:3]]
         values = [r['win_rate'] for r in rankings[:3]]
         colors = ['#fb923c', '#3b82f6', '#9ca3af']
         
-        # Calculate average win rate
         avg_win_rate = sum(values) / len(values) if values else 0
         
         fig_donut = go.Figure(data=[go.Pie(
@@ -1087,7 +1002,7 @@ with col_sidebar:
     else:
         st.info("No data available for performance metrics. Add some trades to see analytics!")
     
-    # Trader of the Month (dynamic based on highest win rate)
+    # Trader of the Month
     if rankings and len(rankings) > 0:
         top_trader = rankings[0]
         st.markdown(f"""
@@ -1114,7 +1029,6 @@ with col_sidebar:
         </div>
         """, unsafe_allow_html=True)
     else:
-        # Show placeholder when no data
         st.markdown("""
         <div class="trade-card">
             <div class="card-header">
@@ -1135,7 +1049,7 @@ with col_sidebar:
         </div>
         """, unsafe_allow_html=True)
     
-    # Dynamic Instrument Performance by Trader
+    # Instrument Performance
     st.markdown("""
     <div style="background: white; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem;">
         <div style="background-color: #334155; color: white; padding: 0.75rem 1rem; border-radius: 0.5rem 0.5rem 0 0; display: flex; align-items: center;">
@@ -1151,18 +1065,15 @@ with col_sidebar:
     
     # Calculate dynamic instrument performance
     if st.session_state.trades and len(st.session_state.trades) > 0:
-        # Get all unique instruments and traders
         instruments = list(set(trade.get('instrument', '') for trade in st.session_state.trades if trade.get('instrument')))
         traders = list(set(trade.get('trader', '') for trade in st.session_state.trades if trade.get('trader')))
         
         if instruments and traders:
-            # Calculate performance for each trader-instrument combination
             performance_data = {'Instrument': instruments}
             
             for trader in traders:
                 trader_performance = []
                 for instrument in instruments:
-                    # Get trades for this trader-instrument combination
                     trades = [t for t in st.session_state.trades 
                              if t.get('trader') == trader and t.get('instrument') == instrument]
                     if trades:
@@ -1173,10 +1084,8 @@ with col_sidebar:
                         trader_performance.append("-")
                 performance_data[trader] = trader_performance
             
-            # Create DataFrame
             perf_df = pd.DataFrame(performance_data)
             
-            # Style the dataframe
             def style_performance(val):
                 if val == '-':
                     return 'background-color: #6b7280; color: white; text-align: center; font-weight: bold; padding: 8px; border-radius: 4px;'
@@ -1193,125 +1102,21 @@ with col_sidebar:
                         pass
                 return 'background-color: #f3f4f6; text-align: center; font-weight: 500; padding: 12px; color: #000000;'
             
-            # Display the styled dataframe
             if len(traders) > 0:
                 styled_df = perf_df.style.applymap(style_performance, subset=traders)
                 styled_df = styled_df.applymap(lambda x: 'background-color: #f3f4f6; text-align: center; font-weight: 500; padding: 12px; color: #000000;', subset=['Instrument'])
                 
                 st.dataframe(styled_df, use_container_width=True, hide_index=True)
             else:
-                st.info("No trader data available for instrument performance analysis.")
+                st.info("No trader data available.")
         else:
-            st.info("No complete trading data available for instrument performance analysis.")
+            st.info("No complete trading data available.")
     else:
-        st.info("No trades available for instrument performance analysis. Add some trades to see detailed analytics!")
-
-    with st.expander("🔧 Worksheet Configuration", expanded=False):
-        st.markdown("""
-        ### Current Configuration:
-        - **Spreadsheet Name**: `Forex Trading Analytics`
-        - **Worksheet Name**: `Trades`
-        
-        ### If you're getting "Worksheet not found" errors:
-        
-        **Option 1: Create the correct worksheet**
-        1. Open your Google Sheet
-        2. Create a new worksheet named exactly `Trades`
-        3. Or rename your existing worksheet to `Trades`
-        
-        **Option 2: Use your existing worksheet**
-        If your worksheet has a different name (like `Sheet1`), you can:
-        1. Find the worksheet name in your Google Sheet
-        2. Update the `WORKSHEET_NAME` variable in the code
-        3. Common names: `Sheet1`, `Trading Data`, `Forex Trades`
-        
-        **Option 3: Let the app create it for you**
-        1. Use the "Setup Google Sheets Integration" button
-        2. The app will automatically create the `Trades` worksheet
-        """)
-        
-        # Add a dynamic worksheet selector
-        if st.session_state.sheets_connected:
-            if st.button("🔍 Detect Available Worksheets", use_container_width=True):
-                try:
-                    gc = init_connection()
-                    spreadsheet = gc.open(SHEET_NAME)
-                    worksheets = spreadsheet.worksheets()
-                    worksheet_names = [ws.title for ws in worksheets]
-                    
-                    st.success("📋 Found these worksheets in your spreadsheet:")
-                    for name in worksheet_names:
-                        if name == WORKSHEET_NAME:
-                            st.write(f"✅ **{name}** (Currently configured)")
-                        else:
-                            st.write(f"📄 {name}")
-                    
-                    if WORKSHEET_NAME not in worksheet_names:
-                        st.warning(f"⚠️ The configured worksheet '{WORKSHEET_NAME}' was not found!")
-                        st.info("💡 You can either:")
-                        st.info("1. Rename one of your existing worksheets to 'Trades'")
-                        st.info("2. Or modify the WORKSHEET_NAME in the code to match an existing worksheet")
-                        
-                except Exception as e:
-                    st.error(f"Error detecting worksheets: {e}")
-    
-    # Instructions for Google Sheets setup
-with st.expander("📋 Google Sheets Setup Instructions", expanded=False):
-    st.markdown("""
-    ### Setting up Google Sheets Integration
-    
-    To enable real-time synchronization across devices, follow these steps:
-    
-    1. **Create a Google Cloud Project:**
-       - Go to [Google Cloud Console](https://console.cloud.google.com/)
-       - Create a new project or select existing one
-    
-    2. **Enable APIs:**
-       - Enable Google Sheets API
-       - Enable Google Drive API
-    
-    3. **Create Service Account:**
-       - Go to IAM & Admin > Service Accounts
-       - Create new service account
-       - Download the JSON key file
-    
-    4. **Configure Streamlit Secrets:**
-       - Create `.streamlit/secrets.toml` file in your project
-       - Add the service account credentials:
-       ```toml
-       [gcp_service_account]
-       type = "service_account"
-       project_id = "your-project-id"
-       private_key_id = "your-private-key-id"
-       private_key = "your-private-key"
-       client_email = "your-service-account-email"
-       client_id = "your-client-id"
-       auth_uri = "https://accounts.google.com/o/oauth2/auth"
-       token_uri = "https://oauth2.googleapis.com/token"
-       auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
-       client_x509_cert_url = "your-cert-url"
-       ```
-    
-    5. **Install Required Packages:**
-       ```bash
-       pip install gspread google-auth
-       ```
-    
-    6. **Share the Spreadsheet:**
-       - Share your Google Sheet with the service account email
-       - Give "Editor" permissions
-    
-    **Benefits of Google Sheets Integration:**
-    - ✅ Real-time synchronization across devices
-    - ✅ Data persistence and backup
-    - ✅ Collaborative access for team members
-    - ✅ Easy data export and analysis
-    - ✅ Automatic updates every 30 seconds
-    """)
+        st.info("No trades available for analysis. Add some trades to see detailed analytics!")
 
 st.markdown('</div>', unsafe_allow_html=True)
 
-# Footer with real-time sync status
+# Footer
 current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 if st.session_state.sheets_connected:
     sync_status = "🔄 Real-time sync enabled (updates every 3 seconds)"
