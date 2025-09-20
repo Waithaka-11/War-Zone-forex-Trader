@@ -14,6 +14,11 @@ import time
 SHEET_NAME = "Forex Trading Analytics"
 WORKSHEET_NAME = "Trades"
 
+# You can also try these common worksheet names if "Trades" doesn't work:
+# WORKSHEET_NAME = "Sheet1"  # Default Google Sheets name
+# WORKSHEET_NAME = "Trading Data"
+# WORKSHEET_NAME = "Forex Trades"
+
 # Initialize Google Sheets connection
 @st.cache_resource
 def init_connection():
@@ -188,55 +193,87 @@ def setup_google_sheet():
             st.error("Cannot setup Google Sheets - connection failed.")
             return False
         
-        # Try to open existing sheet
+        # Step 1: Handle the spreadsheet
+        st.info("🔍 Step 1: Checking for spreadsheet...")
         try:
             spreadsheet = gc.open(SHEET_NAME)
-            st.info(f"Found existing spreadsheet: {SHEET_NAME}")
+            st.success(f"✅ Found existing spreadsheet: '{SHEET_NAME}'")
         except gspread.SpreadsheetNotFound:
             # Create new spreadsheet
-            st.info(f"Creating new spreadsheet: {SHEET_NAME}")
+            st.info(f"📝 Creating new spreadsheet: '{SHEET_NAME}'")
             spreadsheet = gc.create(SHEET_NAME)
-            st.success(f"✅ Created new spreadsheet: {SHEET_NAME}")
-            
-            # Note: Uncomment and replace with your email to auto-share
-            # spreadsheet.share('your-email@gmail.com', perm_type='user', role='writer')
+            st.success(f"✅ Created new spreadsheet: '{SHEET_NAME}'")
         
-        # Try to get the worksheet
+        # Step 2: Handle the worksheet
+        st.info("🔍 Step 2: Checking for 'Trades' worksheet...")
         try:
             worksheet = spreadsheet.worksheet(WORKSHEET_NAME)
-            st.info(f"Found existing worksheet: {WORKSHEET_NAME}")
+            st.success(f"✅ Found existing worksheet: '{WORKSHEET_NAME}'")
         except gspread.WorksheetNotFound:
-            # Create new worksheet
-            st.info(f"Creating new worksheet: {WORKSHEET_NAME}")
+            # Create new worksheet named "Trades"
+            st.info(f"📝 Creating new worksheet: '{WORKSHEET_NAME}'")
             worksheet = spreadsheet.add_worksheet(title=WORKSHEET_NAME, rows=1000, cols=12)
-            st.success(f"✅ Created new worksheet: {WORKSHEET_NAME}")
+            st.success(f"✅ Created new worksheet: '{WORKSHEET_NAME}'")
         
-        # Check if headers exist
+        # Step 3: Setup headers
+        st.info("🔍 Step 3: Checking worksheet headers...")
         try:
             headers = worksheet.row_values(1)
-            if not headers or len(headers) == 0:
-                # Set headers
-                headers = ['id', 'date', 'trader', 'instrument', 'entry', 'sl', 'target', 'risk', 'reward', 'rrRatio', 'outcome', 'result']
-                worksheet.append_row(headers)
+            expected_headers = ['id', 'date', 'trader', 'instrument', 'entry', 'sl', 'target', 'risk', 'reward', 'rrRatio', 'outcome', 'result']
+            
+            if not headers or len(headers) == 0 or headers != expected_headers:
+                # Clear first row and set proper headers
+                st.info("📝 Setting up column headers...")
+                worksheet.clear()  # Clear the worksheet first
+                worksheet.append_row(expected_headers)
                 st.success("✅ Added column headers to worksheet")
             else:
-                st.info("Headers already exist in worksheet")
+                st.success("✅ Headers already exist and are correct")
         except Exception as e:
-            st.warning(f"Could not check/set headers: {e}")
+            st.warning(f"⚠️ Could not check/set headers: {e}")
+            # Try to add headers anyway
+            try:
+                headers = ['id', 'date', 'trader', 'instrument', 'entry', 'sl', 'target', 'risk', 'reward', 'rrRatio', 'outcome', 'result']
+                worksheet.append_row(headers)
+                st.success("✅ Added column headers")
+            except:
+                st.error("❌ Failed to add headers")
         
-        # Get the spreadsheet URL for user reference
+        # Step 4: Provide user information
         spreadsheet_url = f"https://docs.google.com/spreadsheets/d/{spreadsheet.id}"
-        st.success(f"🔗 Your Google Sheet is ready!")
-        st.info(f"📋 Spreadsheet URL: {spreadsheet_url}")
-        st.info("💡 Make sure to share this spreadsheet with your service account email for full access.")
+        st.success("🎉 Setup Complete!")
+        
+        # Show final summary
+        st.markdown("""
+        ### ✅ Setup Summary:
+        - **Spreadsheet**: Ready ✅
+        - **Worksheet 'Trades'**: Ready ✅  
+        - **Column Headers**: Ready ✅
+        - **Ready for Trading Data**: Yes ✅
+        """)
+        
+        st.info(f"🔗 **Your Google Sheet**: [Click here to open]({spreadsheet_url})")
+        st.info("💡 **Next Steps**: You can now add trades and they will automatically sync to Google Sheets!")
+        
+        # Test the setup by trying to add a sample row (then remove it)
+        try:
+            # Add a test row to verify everything works
+            test_row = ['TEST', 'TEST', 'TEST', 'TEST', 0, 0, 0, 0, 0, 0, 'TEST', 'TEST']
+            worksheet.append_row(test_row)
+            # Immediately delete the test row
+            worksheet.delete_rows(2, 2)  # Delete row 2 (the test row)
+            st.success("✅ Connection test passed - ready to sync trades!")
+        except Exception as e:
+            st.warning(f"⚠️ Setup complete but sync test failed: {e}")
         
         return True
         
     except gspread.exceptions.APIError as e:
-        st.error(f"Google Sheets API Error during setup: {e}")
+        st.error(f"❌ Google Sheets API Error during setup: {e}")
+        st.info("💡 This might be due to API limits or permissions. Please wait a moment and try again.")
         return False
     except Exception as e:
-        st.error(f"Unexpected error during Google Sheets setup: {e}")
+        st.error(f"❌ Unexpected error during Google Sheets setup: {e}")
         return False
 
 def load_fallback_data():
@@ -484,11 +521,76 @@ st.markdown('<div class="main-content">', unsafe_allow_html=True)
 # Setup Google Sheets button (for first-time setup)
 if not st.session_state.sheets_connected:
     st.warning("⚠️ Google Sheets not connected. Using local data only.")
-    if st.button("🔧 Setup Google Sheets Integration"):
-        if setup_google_sheet():
-            st.success("✅ Google Sheets setup completed!")
-            st.session_state.sheets_connected = True
-            st.rerun()
+    
+    # Make the setup button more prominent
+    st.markdown("""
+    <div style="background-color: #fef3c7; border: 1px solid #f59e0b; border-radius: 0.5rem; padding: 1rem; margin: 1rem 0;">
+        <h4 style="color: #92400e; margin: 0 0 0.5rem 0;">🚀 Ready to Enable Cloud Sync?</h4>
+        <p style="color: #92400e; margin: 0; font-size: 0.875rem;">
+            Click the button below to automatically create your "Trades" worksheet and enable real-time synchronization across all your devices!
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col_setup1, col_setup2, col_setup3 = st.columns([1, 2, 1])
+    with col_setup2:
+        if st.button("🔧 Setup Google Sheets Integration", use_container_width=True, type="primary"):
+            with st.spinner("🔄 Setting up your Google Sheets integration..."):
+                if setup_google_sheet():
+                    st.session_state.sheets_connected = True
+                    st.cache_data.clear()  # Clear cache to reload data
+                    st.balloons()  # Celebration animation!
+                    time.sleep(3)  # Give user time to see all the success messages
+                    st.rerun()
+                else:
+                    st.error("❌ Setup failed. Please check the error messages above and try again.")
+else:
+    # Show connection info when connected
+    st.markdown("""
+    <div style="background-color: #dcfce7; border: 1px solid #16a34a; border-radius: 0.5rem; padding: 1rem; margin: 1rem 0;">
+        <div style="display: flex; align-items: center;">
+            <span style="font-size: 1.5rem; margin-right: 0.75rem;">✅</span>
+            <div>
+                <h4 style="color: #15803d; margin: 0 0 0.25rem 0;">Google Sheets Connected!</h4>
+                <p style="color: #15803d; margin: 0; font-size: 0.875rem;">
+                    Your trades are now syncing automatically across all devices. Add a trade below to test it!
+                </p>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col_info1, col_info2, col_info3 = st.columns([1, 2, 1])
+    with col_info2:        
+        # Add a test connection button
+        if st.button("🔍 Test Connection & View Sheet", use_container_width=True):
+            try:
+                gc = init_connection()
+                if gc:
+                    spreadsheet = gc.open(SHEET_NAME)
+                    
+                    # List all available worksheets
+                    worksheets = spreadsheet.worksheets()
+                    worksheet_names = [ws.title for ws in worksheets]
+                    st.info(f"📋 Available worksheets: {', '.join(worksheet_names)}")
+                    
+                    # Try to access the target worksheet
+                    try:
+                        worksheet = spreadsheet.worksheet(WORKSHEET_NAME)
+                        record_count = len(worksheet.get_all_records())
+                        st.success(f"✅ Connection successful! Found {record_count} trades in worksheet '{WORKSHEET_NAME}'.")
+                    except gspread.WorksheetNotFound:
+                        st.error(f"❌ Worksheet '{WORKSHEET_NAME}' not found!")
+                        st.info(f"💡 Available worksheets: {', '.join(worksheet_names)}")
+                        st.info("💡 Click 'Setup Google Sheets Integration' again to create the missing worksheet.")
+                    
+                    spreadsheet_url = f"https://docs.google.com/spreadsheets/d/{spreadsheet.id}"
+                    st.info(f"🔗 [Open your Google Sheet]({spreadsheet_url})")
+                else:
+                    st.error("❌ Connection failed!")
+            except Exception as e:
+                st.error(f"❌ Connection test failed: {e}")
+                st.info("💡 Try running the setup again if you see errors.")
 
 # Add New Trade Section
 st.markdown("""
@@ -905,7 +1007,56 @@ with col_sidebar:
     else:
         st.info("No trades available for instrument performance analysis.")
 
-# Instructions for Google Sheets setup
+    with st.expander("🔧 Worksheet Configuration", expanded=False):
+        st.markdown("""
+        ### Current Configuration:
+        - **Spreadsheet Name**: `Forex Trading Analytics`
+        - **Worksheet Name**: `Trades`
+        
+        ### If you're getting "Worksheet not found" errors:
+        
+        **Option 1: Create the correct worksheet**
+        1. Open your Google Sheet
+        2. Create a new worksheet named exactly `Trades`
+        3. Or rename your existing worksheet to `Trades`
+        
+        **Option 2: Use your existing worksheet**
+        If your worksheet has a different name (like `Sheet1`), you can:
+        1. Find the worksheet name in your Google Sheet
+        2. Update the `WORKSHEET_NAME` variable in the code
+        3. Common names: `Sheet1`, `Trading Data`, `Forex Trades`
+        
+        **Option 3: Let the app create it for you**
+        1. Use the "Setup Google Sheets Integration" button
+        2. The app will automatically create the `Trades` worksheet
+        """)
+        
+        # Add a dynamic worksheet selector
+        if st.session_state.sheets_connected:
+            if st.button("🔍 Detect Available Worksheets", use_container_width=True):
+                try:
+                    gc = init_connection()
+                    spreadsheet = gc.open(SHEET_NAME)
+                    worksheets = spreadsheet.worksheets()
+                    worksheet_names = [ws.title for ws in worksheets]
+                    
+                    st.success("📋 Found these worksheets in your spreadsheet:")
+                    for name in worksheet_names:
+                        if name == WORKSHEET_NAME:
+                            st.write(f"✅ **{name}** (Currently configured)")
+                        else:
+                            st.write(f"📄 {name}")
+                    
+                    if WORKSHEET_NAME not in worksheet_names:
+                        st.warning(f"⚠️ The configured worksheet '{WORKSHEET_NAME}' was not found!")
+                        st.info("💡 You can either:")
+                        st.info("1. Rename one of your existing worksheets to 'Trades'")
+                        st.info("2. Or modify the WORKSHEET_NAME in the code to match an existing worksheet")
+                        
+                except Exception as e:
+                    st.error(f"Error detecting worksheets: {e}")
+    
+    # Instructions for Google Sheets setup
 with st.expander("📋 Google Sheets Setup Instructions", expanded=False):
     st.markdown("""
     ### Setting up Google Sheets Integration
