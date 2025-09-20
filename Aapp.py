@@ -33,6 +33,47 @@ with col_sidebar:
             hole=0.6,
             marker=dict(colors=colors[:len(labels)], line=dict(color='#FFFFFF', width=2)),
             textinfo='none',
+            hovertemplate='<b>%{label}</b><br>Win Rate: %{value}%<extra></extra>'
+        )])
+        
+        fig_donut.update_layout(
+            showlegend=False,
+            height=300,
+            margin=dict(t=20, b=20, l=20, r=20),
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            annotations=[
+                dict(
+                    text=f'<b>{avg_win_rate:.1f}%</b><br><span style="font-size:12px; color:#6b7280;">Avg Rate</span>', 
+                    x=0.5, y=0.5, 
+                    font_size=20, 
+                    showarrow=False,
+                    font_color='#374151'
+                )
+            ]
+        )
+        
+        st.plotly_chart(fig_donut, use_container_width=True)
+        
+        # Dynamic Legend
+        if len(rankings) >= 1:
+            legend_cols = st.columns(min(3, len(rankings)))
+            
+            for i, ranking in enumerate(rankings[:3]):
+                if i < len(legend_cols):
+                    with legend_cols[i]:
+                        color = colors[i] if i < len(colors) else '#6b7280'
+                        st.markdown(f"""
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+                            <div style="display: flex; align-items: center;">
+                                <div style="width: 0.75rem; height: 0.75rem; background-color: {color}; border-radius: 0.125rem; margin-right: 0.5rem;"></div>
+                                <span style="font-size: 0.875rem; color: #000000;">{ranking['name']}</span>
+                            </div>
+                            <span style="font-weight: 600; font-size: 0.875rem; color: #000000;">{ranking['win_rate']}%</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+    else:
+        st.info("No data available for performance metrics. Add some trades to see analytics!")
             import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
