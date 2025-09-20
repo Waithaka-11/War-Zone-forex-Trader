@@ -715,28 +715,28 @@ with col8:
             
             # Save to Google Sheets first
             if st.session_state.sheets_connected:
-                try:
-                    if save_trade_to_sheets(new_trade):
+                    try:
+                        if save_trade_to_sheets(new_trade):
+                            st.session_state.trades.append(new_trade)
+                            st.success("✅ Trade added successfully and synced to Google Sheets!")
+                            # Force immediate refresh for real-time sync
+                            force_refresh_data()
+                            time.sleep(0.5)  # Brief delay to ensure sync propagation
+                            st.rerun()
+                        else:
+                            st.session_state.trades.append(new_trade)
+                            st.warning("⚠️ Trade added locally but Google Sheets sync may have failed. Check your connection.")
+                            st.info("💡 If you see 'Response [200]' in errors, that actually means the sync worked!")
+                    except Exception as e:
                         st.session_state.trades.append(new_trade)
-                        st.success("✅ Trade added successfully and synced to Google Sheets!")
-                        # Clear cache to refresh data
-                        st.cache_data.clear()
-                        time.sleep(1)  # Brief delay to ensure sync
-                        st.rerun()
-                    else:
-                        st.session_state.trades.append(new_trade)
-                        st.warning("⚠️ Trade added locally but Google Sheets sync may have failed. Check your connection.")
-                        st.info("💡 If you see 'Response [200]' in errors, that actually means the sync worked!")
-                except Exception as e:
-                    st.session_state.trades.append(new_trade)
-                    error_msg = str(e)
-                    if "Response [200]" in error_msg:
-                        st.success("✅ Trade added and synced successfully! (Response 200 = success)")
-                        st.cache_data.clear()
-                        st.rerun()
-                    else:
-                        st.error(f"❌ Error syncing to Google Sheets: {error_msg}")
-                        st.warning("⚠️ Trade added locally only")
+                        error_msg = str(e)
+                        if "Response [200]" in error_msg:
+                            st.success("✅ Trade added and synced successfully! (Response 200 = success)")
+                            force_refresh_data()
+                            st.rerun()
+                        else:
+                            st.error(f"❌ Error syncing to Google Sheets: {error_msg}")
+                            st.warning("⚠️ Trade added locally only")
             else:
                 st.session_state.trades.append(new_trade)
                 st.warning("⚠️ Trade added locally only (Google Sheets not connected)")
@@ -746,14 +746,28 @@ with col8:
 
 st.markdown('</div></div>', unsafe_allow_html=True)
 
-# Refresh button
-col_refresh1, col_refresh2, col_refresh3 = st.columns([1, 1, 8])
-with col_refresh2:
-    if st.button("🔄 Refresh Data", help="Refresh data from Google Sheets"):
-        st.cache_data.clear()
-        st.session_state.trades = load_trades_from_sheets()
-        st.success("Data refreshed!")
-        st.rerun()
+# Real-time sync status and manual refresh
+sync_col1, sync_col2, sync_col3, sync_col4 = st.columns([2, 1, 1, 6])
+
+with sync_col1:
+    if st.session_state.sheets_connected:
+        current_time = datetime.now().strftime('%H:%M:%S')
+        st.markdown(f"<small>🔄 <span style='color: #10b981;'>Live sync active</span> • Last check: {current_time}</small>", unsafe_allow_html=True)
+    else:
+        st.markdown("<small>⚠️ <span style='color: #f59e0b;'>Local mode only</span></small>", unsafe_allow_html=True)
+
+with sync_col2:
+    if st.button("🔄", help="Force refresh data from Google Sheets", key="manual_refresh"):
+        with st.spinner("Refreshing..."):
+            force_refresh_data()
+            st.success("Data refreshed!")
+            st.rerun()
+
+with sync_col3:
+    # Auto-refresh toggle
+    auto_refresh_enabled = st.checkbox("⚡", value=True, help="Enable/disable auto-refresh (every 3 seconds)", key="auto_refresh_toggle")
+    if not auto_refresh_enabled:
+        st.session_state.last_auto_refresh = 0  # Disable auto-refresh
 
 # Main Content Grid
 col_main, col_sidebar = st.columns([2, 1])
@@ -878,13 +892,28 @@ with col_main:
                 if st.button("🗑️", key=f"delete_{trade['id']}", help="Delete this trade", type="secondary"):
                     # Delete from Google Sheets first
                     if st.session_state.sheets_connected:
-                        if delete_trade_from_sheets(trade['id']):
-                            st.session_state.trades = [t for t in st.session_state.trades if t['id'] != trade['id']]
-                            st.success("✅ Trade deleted and synced!")
-                            st.cache_data.clear()
-                            st.rerun()
-                        else:
-                            st.error("❌ Failed to delete from Google Sheets")
+                        try:
+                            if delete_trade_from_sheets(trade['id']):
+                                st.session_state.trades = [t for t in st.session_state.trades if t['id'] != trade['id']]
+                                st.success("✅ Trade deleted and synced!")
+                                # Force immediate refresh for real-time sync
+                                force_refresh_data()
+                                st.rerun()
+                            else:
+                                st.session_state.trades = [t for t in st.session_state.trades if t['id'] != trade['id']]
+                                st.warning("⚠️ Trade deleted locally, but Google Sheets sync may have failed")
+                                st.rerun()
+                        except Exception as e:
+                            error_msg = str(e)
+                            if "Response [200]" in error_msg:
+                                st.session_state.trades = [t for t in st.session_state.trades if t['id'] != trade['id']]
+                                st.success("✅ Trade deleted and synced successfully!")
+                                force_refresh_data()
+                                st.rerun()
+                            else:
+                                st.session_state.trades = [t for t in st.session_state.trades if t['id'] != trade['id']]
+                                st.warning(f"⚠️ Trade deleted locally, sync error: {error_msg}")
+                                st.rerun()
                     else:
                         st.session_state.trades = [t for t in st.session_state.trades if t['id'] != trade['id']]
                         st.warning("⚠️ Trade deleted locally only (Google Sheets not connected)")
@@ -1163,10 +1192,20 @@ with st.expander("📋 Google Sheets Setup Instructions", expanded=False):
 
 st.markdown('</div>', unsafe_allow_html=True)
 
-# Footer with sync status
-st.markdown("""
+# Footer with real-time sync status
+current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+if st.session_state.sheets_connected:
+    sync_status = "🔄 Real-time sync enabled (updates every 3 seconds)"
+    if st.session_state.get('auto_refresh_toggle', True):
+        next_refresh = REAL_TIME_UPDATE_INTERVAL - (time.time() - st.session_state.get('last_auto_refresh', 0))
+        if next_refresh > 0:
+            sync_status += f" • Next auto-refresh in {int(next_refresh)}s"
+else:
+    sync_status = "📱 Local mode - Enable Google Sheets for multi-device sync"
+
+st.markdown(f"""
 <div style="text-align: center; padding: 2rem 0; color: #6b7280; font-size: 0.875rem; border-top: 1px solid #e5e7eb; margin-top: 2rem;">
-    <p>📊 Forex Trading Analytics - Real-time data synchronization with Google Sheets</p>
-    <p>Last updated: {}</p>
+    <p>📊 Forex Trading Analytics - {sync_status}</p>
+    <p>Last updated: {current_time}</p>
 </div>
-""".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S')), unsafe_allow_html=True)
+""", unsafe_allow_html=True)
