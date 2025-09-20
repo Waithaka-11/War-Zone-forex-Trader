@@ -1,9 +1,8 @@
-# Create dynamic donut chart based on current data
-    if rankings and len(rankings) > 0:
-        labels = [r['name'] for r in rankings[:3]]  # Top 3 traders
-        values = [r['win_rate'] for r in rankings[:3]]
-        colors = ['#fb923c', '#3b82f6', '#9ca3af']
-        
+ # Create dynamic donut chart based on current data
+if rankings and len(rankings) > 0:
+    labels = [r['name'] for r in rankings[:3]]  # Top 3 traders
+    values = [r['win_rate'] for r in rankings[:3]]
+    colors = ['#fb923c', '#3b82f6', '#9ca3af']       
         # Calculate average win rate
         avg_win_rate = sum(values) / len(values) if values else 0
         
@@ -1267,3 +1266,4 @@ st.markdown(f"""
     <p>Last updated: {current_time}</p>
 </div>
 """, unsafe_allow_html=True)
+
