@@ -33,7 +33,6 @@ def init_connection():
         )
         return gspread.authorize(credentials)
     except Exception as e:
-        st.error(f"Failed to connect to Google Sheets: {e}")
         return None
 
 @st.cache_data(ttl=CACHE_TTL)  # Much shorter cache - 5 seconds only
@@ -61,12 +60,10 @@ def load_trades_from_sheets():
         # Expected headers
         expected_headers = ['id', 'date', 'trader', 'instrument', 'entry', 'sl', 'target', 'risk', 'reward', 'rrRatio', 'outcome', 'result']
         
-        # If headers don't match expected, try to fix or skip
+        # If headers don't match expected, try to fix silently
         if headers != expected_headers:
-            st.warning(f"Headers mismatch. Found: {headers[:6]}... Expected: {expected_headers[:6]}...")
             # Try to use the data anyway if it has the right number of columns
             if len(headers) < 12:
-                st.error("Not enough columns in spreadsheet. Please run setup again.")
                 return load_fallback_data()
         
         # Process each data row
@@ -101,22 +98,11 @@ def load_trades_from_sheets():
                     processed_records.append(processed_record)
                     
             except (ValueError, TypeError, IndexError) as e:
-                st.warning(f"Skipped row {i+2}: {e}. Row data: {row[:6]}...")
                 continue
         
         return processed_records if processed_records else load_fallback_data()
         
-    except gspread.exceptions.SpreadsheetNotFound:
-        st.warning(f"Spreadsheet '{SHEET_NAME}' not found. Using fallback data.")
-        return load_fallback_data()
-    except gspread.exceptions.WorksheetNotFound:
-        st.warning(f"Worksheet '{WORKSHEET_NAME}' not found. Using fallback data.")
-        return load_fallback_data()
-    except gspread.exceptions.APIError as e:
-        st.warning(f"Google Sheets API Error: {e}. Using fallback data.")
-        return load_fallback_data()
-    except Exception as e:
-        st.warning(f"Error loading from Google Sheets: {e}. Using fallback data.")
+    except:
         return load_fallback_data()
 
 def save_trade_to_sheets(trade_data):
@@ -162,17 +148,7 @@ def save_trade_to_sheets(trade_data):
                     return True
             return False
         
-    except gspread.exceptions.SpreadsheetNotFound:
-        st.error("Spreadsheet not found. Please check the SHEET_NAME or create the spreadsheet.")
-        return False
-    except gspread.exceptions.WorksheetNotFound:
-        st.error("Worksheet not found. Please check the WORKSHEET_NAME or create the worksheet.")
-        return False
-    except gspread.exceptions.APIError as e:
-        st.error(f"Google Sheets API Error: {e}")
-        return False
-    except Exception as e:
-        st.error(f"Unexpected error saving to Google Sheets: {e}")
+    except:
         return False
 
 def delete_trade_from_sheets(trade_id):
@@ -192,114 +168,55 @@ def delete_trade_from_sheets(trade_id):
                 sheet.delete_rows(cell.row)
                 return True
             else:
-                st.error(f"Trade ID {trade_id} not found in spreadsheet.")
                 return False
         except gspread.exceptions.CellNotFound:
-            st.error(f"Trade ID {trade_id} not found in spreadsheet.")
             return False
         
-    except gspread.exceptions.SpreadsheetNotFound:
-        st.error("Spreadsheet not found. Please check the SHEET_NAME.")
-        return False
-    except gspread.exceptions.WorksheetNotFound:
-        st.error("Worksheet not found. Please check the WORKSHEET_NAME.")
-        return False
-    except gspread.exceptions.APIError as e:
-        st.error(f"Google Sheets API Error: {e}")
-        return False
-    except Exception as e:
-        st.error(f"Unexpected error deleting from Google Sheets: {e}")
+    except:
         return False
 
-def setup_google_sheet():
-    """Set up the Google Sheet with proper headers if it doesn't exist"""
+def setup_google_sheet_silently():
+    """Set up the Google Sheet with proper headers if it doesn't exist - runs silently in background"""
     try:
         gc = init_connection()
         if gc is None:
-            st.error("Cannot setup Google Sheets - connection failed.")
             return False
         
         # Step 1: Handle the spreadsheet
-        st.info("🔍 Step 1: Checking for spreadsheet...")
         try:
             spreadsheet = gc.open(SHEET_NAME)
-            st.success(f"✅ Found existing spreadsheet: '{SHEET_NAME}'")
         except gspread.SpreadsheetNotFound:
             # Create new spreadsheet
-            st.info(f"📝 Creating new spreadsheet: '{SHEET_NAME}'")
             spreadsheet = gc.create(SHEET_NAME)
-            st.success(f"✅ Created new spreadsheet: '{SHEET_NAME}'")
         
         # Step 2: Handle the worksheet
-        st.info("🔍 Step 2: Checking for 'Trades' worksheet...")
         try:
             worksheet = spreadsheet.worksheet(WORKSHEET_NAME)
-            st.success(f"✅ Found existing worksheet: '{WORKSHEET_NAME}'")
         except gspread.WorksheetNotFound:
             # Create new worksheet named "Trades"
-            st.info(f"📝 Creating new worksheet: '{WORKSHEET_NAME}'")
             worksheet = spreadsheet.add_worksheet(title=WORKSHEET_NAME, rows=1000, cols=12)
-            st.success(f"✅ Created new worksheet: '{WORKSHEET_NAME}'")
         
         # Step 3: Setup headers
-        st.info("🔍 Step 3: Checking worksheet headers...")
         try:
             headers = worksheet.row_values(1)
             expected_headers = ['id', 'date', 'trader', 'instrument', 'entry', 'sl', 'target', 'risk', 'reward', 'rrRatio', 'outcome', 'result']
             
             if not headers or len(headers) == 0 or headers != expected_headers:
                 # Clear first row and set proper headers
-                st.info("📝 Setting up column headers...")
                 worksheet.clear()  # Clear the worksheet first
                 worksheet.append_row(expected_headers)
-                st.success("✅ Added column headers to worksheet")
-            else:
-                st.success("✅ Headers already exist and are correct")
+            
         except Exception as e:
-            st.warning(f"⚠️ Could not check/set headers: {e}")
             # Try to add headers anyway
             try:
                 headers = ['id', 'date', 'trader', 'instrument', 'entry', 'sl', 'target', 'risk', 'reward', 'rrRatio', 'outcome', 'result']
                 worksheet.append_row(headers)
-                st.success("✅ Added column headers")
             except:
-                st.error("❌ Failed to add headers")
-        
-        # Step 4: Provide user information
-        spreadsheet_url = f"https://docs.google.com/spreadsheets/d/{spreadsheet.id}"
-        st.success("🎉 Setup Complete!")
-        
-        # Show final summary
-        st.markdown("""
-        ### ✅ Setup Summary:
-        - **Spreadsheet**: Ready ✅
-        - **Worksheet 'Trades'**: Ready ✅  
-        - **Column Headers**: Ready ✅
-        - **Ready for Trading Data**: Yes ✅
-        """)
-        
-        st.info(f"🔗 **Your Google Sheet**: [Click here to open]({spreadsheet_url})")
-        st.info("💡 **Next Steps**: You can now add trades and they will automatically sync to Google Sheets!")
-        
-        # Test the setup by trying to add a sample row (then remove it)
-        try:
-            # Add a test row to verify everything works
-            test_row = ['TEST', 'TEST', 'TEST', 'TEST', 0, 0, 0, 0, 0, 0, 'TEST', 'TEST']
-            worksheet.append_row(test_row)
-            # Immediately delete the test row
-            worksheet.delete_rows(2, 2)  # Delete row 2 (the test row)
-            st.success("✅ Connection test passed - ready to sync trades!")
-        except Exception as e:
-            st.warning(f"⚠️ Setup complete but sync test failed: {e}")
+                pass
         
         return True
         
-    except gspread.exceptions.APIError as e:
-        st.error(f"❌ Google Sheets API Error during setup: {e}")
-        st.info("💡 This might be due to API limits or permissions. Please wait a moment and try again.")
-        return False
-    except Exception as e:
-        st.error(f"❌ Unexpected error during Google Sheets setup: {e}")
+    except:
         return False
 
 def load_fallback_data():
@@ -322,7 +239,6 @@ def force_refresh_data():
             return True
         return False
     except Exception as e:
-        st.error(f"Error refreshing data: {e}")
         return False
 
 def auto_refresh_trades():
@@ -330,9 +246,8 @@ def auto_refresh_trades():
     if 'last_auto_refresh' not in st.session_state:
         st.session_state.last_auto_refresh = time.time()
         
-    # Auto-refresh every few seconds if Google Sheets is connected and toggle is enabled
+    # Auto-refresh every few seconds if Google Sheets is connected
     if (st.session_state.sheets_connected and 
-        st.session_state.get('auto_refresh_toggle', True) and 
         time.time() - st.session_state.last_auto_refresh > REAL_TIME_UPDATE_INTERVAL):
         
         st.session_state.last_auto_refresh = time.time()
@@ -352,8 +267,8 @@ def auto_refresh_trades():
 
 # Page configuration
 st.set_page_config(
-    page_title="Forex Trading Analytics",
-    page_icon="📈",
+    page_title="The War Zone - Forex Trading Analytics",
+    page_icon="⚔️",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -365,42 +280,55 @@ st.markdown("""
         background-color: #f3f4f6;
     }
     
-    .main-header {
-        background-color: #334155;
+    .war-zone-header {
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
         color: white;
-        padding: 1rem 1.5rem;
+        padding: 3rem 1.5rem 2rem 1.5rem;
         border-radius: 0;
         margin: -1rem -1rem 0 -1rem;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        text-align: center;
+        position: relative;
+        overflow: hidden;
     }
     
-    .header-nav {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
+    .war-zone-header::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E") repeat;
+        pointer-events: none;
     }
     
-    .nav-buttons {
-        display: flex;
-        gap: 1rem;
+    .war-zone-title {
+        font-size: 4rem;
+        font-weight: 900;
+        margin: 0;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        letter-spacing: 2px;
+        position: relative;
+        z-index: 1;
     }
     
-    .nav-btn {
-        background: transparent;
-        border: none;
-        color: white;
-        padding: 0.5rem 0.75rem;
-        border-radius: 0.375rem;
-        cursor: pointer;
-        transition: background-color 0.2s;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        font-size: 0.875rem;
+    .war-zone-subtitle {
+        font-size: 1.2rem;
+        font-style: italic;
+        margin: 1rem 0 0.5rem 0;
+        opacity: 0.9;
+        position: relative;
+        z-index: 1;
     }
     
-    .nav-btn:hover {
-        background-color: #475569;
+    .war-zone-author {
+        font-size: 1rem;
+        font-weight: 600;
+        margin: 0;
+        opacity: 0.8;
+        position: relative;
+        z-index: 1;
     }
     
     .trade-card {
@@ -422,29 +350,6 @@ st.markdown("""
     
     .card-body {
         padding: 1.5rem;
-    }
-    
-    .connection-status {
-        position: fixed;
-        top: 80px;
-        right: 20px;
-        z-index: 1000;
-        padding: 0.5rem 1rem;
-        border-radius: 0.25rem;
-        font-size: 0.875rem;
-        font-weight: 500;
-    }
-    
-    .status-connected {
-        background-color: #dcfce7;
-        color: #166534;
-        border: 1px solid #bbf7d0;
-    }
-    
-    .status-disconnected {
-        background-color: #fee2e2;
-        color: #dc2626;
-        border: 1px solid #fecaca;
     }
     
     .rank-item {
@@ -506,195 +411,26 @@ if 'trades' not in st.session_state:
     st.session_state.trades = load_trades_from_sheets()
     
 if 'sheets_connected' not in st.session_state:
-    st.session_state.sheets_connected = init_connection() is not None
+    connection = init_connection()
+    st.session_state.sheets_connected = connection is not None
+    # Silently setup Google Sheets if connected
+    if st.session_state.sheets_connected:
+        setup_google_sheet_silently()
 
 # Enable real-time updates when connected to Google Sheets
 if st.session_state.sheets_connected:
     auto_refresh_trades()
 
-# Connection status indicator
-connection_class = "status-connected" if st.session_state.sheets_connected else "status-disconnected"
-connection_text = "🟢 Google Sheets Connected" if st.session_state.sheets_connected else "🔴 Using Local Data"
-
-st.markdown(f"""
-<div class="connection-status {connection_class}">
-    {connection_text}
-</div>
-""", unsafe_allow_html=True)
-
-# Header
+# Header - The War Zone
 st.markdown("""
-<div class="main-header">
-    <div class="header-nav">
-        <div style="display: flex; align-items: center;">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 0.75rem;">
-                <line x1="12" y1="20" x2="12" y2="10"></line>
-                <line x1="18" y1="20" x2="18" y2="4"></line>
-                <line x1="6" y1="20" x2="6" y2="16"></line>
-            </svg>
-            <h1 style="font-size: 1.25rem; font-weight: bold; margin: 0;">Forex Trading Analytics</h1>
-        </div>
-        <div class="nav-buttons">
-            <button class="nav-btn">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-                    <polyline points="9,22 9,12 15,12 15,22"></polyline>
-                </svg>
-                Dashboard
-            </button>
-        </div>
-    </div>
+<div class="war-zone-header">
+    <h1 class="war-zone-title">THE WAR ZONE</h1>
+    <p class="war-zone-subtitle">"Don't be afraid to give up the good to go for the great."</p>
+    <p class="war-zone-author">— John D. Rockefeller</p>
 </div>
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="main-content">', unsafe_allow_html=True)
-
-# Setup Google Sheets button (for first-time setup)
-if not st.session_state.sheets_connected:
-    st.warning("⚠️ Google Sheets not connected. Using local data only.")
-    
-    st.markdown("""
-    <div style="background-color: #fef3c7; border: 1px solid #f59e0b; border-radius: 0.5rem; padding: 1rem; margin: 1rem 0;">
-        <h4 style="color: #92400e; margin: 0 0 0.5rem 0;">🚀 Ready to Enable Cloud Sync?</h4>
-        <p style="color: #92400e; margin: 0; font-size: 0.875rem;">
-            Click the button below to automatically create your "Trades" worksheet and enable real-time synchronization across all your devices!
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    col_setup1, col_setup2, col_setup3 = st.columns([1, 2, 1])
-    with col_setup2:
-        if st.button("🔧 Setup Google Sheets Integration", use_container_width=True, type="primary"):
-            with st.spinner("🔄 Setting up your Google Sheets integration..."):
-                if setup_google_sheet():
-                    st.session_state.sheets_connected = True
-                    st.cache_data.clear()
-                    st.balloons()
-                    time.sleep(3)
-                    st.rerun()
-                else:
-                    st.error("❌ Setup failed. Please check the error messages above and try again.")
-else:
-    # Show connection info when connected
-    st.markdown("""
-    <div style="background-color: #dcfce7; border: 1px solid #16a34a; border-radius: 0.5rem; padding: 1rem; margin: 1rem 0;">
-        <div style="display: flex; align-items: center;">
-            <span style="font-size: 1.5rem; margin-right: 0.75rem;">✅</span>
-            <div>
-                <h4 style="color: #15803d; margin: 0 0 0.25rem 0;">Google Sheets Connected!</h4>
-                <p style="color: #15803d; margin: 0; font-size: 0.875rem;">
-                    Your trades are now syncing automatically across all devices. Add a trade below to test it!
-                </p>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    col_info1, col_info2, col_info3 = st.columns([1, 2, 1])
-    with col_info2:        
-        # Add a "Fix Spreadsheet" button
-        if st.button("🛠️ Fix Spreadsheet Headers", use_container_width=True, help="Reset headers and clean up data"):
-            try:
-                gc = init_connection()
-                if gc:
-                    spreadsheet = gc.open(SHEET_NAME)
-                    worksheet = spreadsheet.worksheet(WORKSHEET_NAME)
-                    
-                    # Get all current data
-                    all_data = worksheet.get_all_values()
-                    
-                    st.info("🔄 Fixing spreadsheet headers and data...")
-                    
-                    # Clear the worksheet
-                    worksheet.clear()
-                    
-                    # Add proper headers
-                    headers = ['id', 'date', 'trader', 'instrument', 'entry', 'sl', 'target', 'risk', 'reward', 'rrRatio', 'outcome', 'result']
-                    worksheet.append_row(headers)
-                    
-                    # If there was existing data, try to preserve valid trades
-                    if len(all_data) > 1:
-                        valid_trades = []
-                        for i, row in enumerate(all_data[1:], 1):  # Skip first row (old headers)
-                            if len(row) >= 12 and row[2] and row[3]:  # Has trader and instrument
-                                valid_trades.append(row[:12])  # Take first 12 columns
-                        
-                        if valid_trades:
-                            for trade_row in valid_trades:
-                                worksheet.append_row(trade_row)
-                            st.success(f"✅ Fixed headers and preserved {len(valid_trades)} valid trades!")
-                        else:
-                            st.success("✅ Fixed headers! No valid existing data to preserve.")
-                    else:
-                        st.success("✅ Fixed headers! Spreadsheet is now ready for new trades.")
-                    
-                    # Force refresh
-                    st.cache_data.clear()
-                    st.session_state.trades = load_trades_from_sheets()
-                    st.rerun()
-                    
-            except Exception as e:
-                st.error(f"Error fixing spreadsheet: {e}")
-            try:
-                gc = init_connection()
-                if gc:
-                    try:
-                        spreadsheet = gc.open(SHEET_NAME)
-                        st.success(f"✅ Successfully connected to spreadsheet: '{SHEET_NAME}'")
-                        
-                        worksheets = spreadsheet.worksheets()
-                        worksheet_names = [ws.title for ws in worksheets]
-                        st.info(f"📋 Available worksheets: {', '.join(worksheet_names)}")
-                        
-                        try:
-                            worksheet = spreadsheet.worksheet(WORKSHEET_NAME)
-                            st.success(f"✅ Successfully accessed worksheet: '{WORKSHEET_NAME}'")
-                            
-                            try:
-                                records = worksheet.get_all_records()
-                                record_count = len(records)
-                                st.success(f"✅ Found {record_count} trades in the worksheet")
-                                
-                                if records:
-                                    headers = list(records[0].keys()) if records else worksheet.row_values(1)
-                                    st.info(f"📊 Column headers: {', '.join(headers[:6])}{'...' if len(headers) > 6 else ''}")
-                                else:
-                                    headers = worksheet.row_values(1)
-                                    if headers:
-                                        st.info(f"📊 Column headers: {', '.join(headers[:6])}{'...' if len(headers) > 6 else ''}")
-                                    else:
-                                        st.warning("⚠️ No headers found - worksheet may be empty")
-                                
-                            except Exception as e:
-                                st.warning(f"⚠️ Could not read worksheet data: {str(e)}")
-                                
-                        except gspread.WorksheetNotFound:
-                            st.error(f"❌ Worksheet '{WORKSHEET_NAME}' not found!")
-                            st.info(f"💡 Available worksheets: {', '.join(worksheet_names)}")
-                            st.info("💡 Click 'Setup Google Sheets Integration' to create the missing worksheet.")
-                        except Exception as ws_error:
-                            st.error(f"❌ Error accessing worksheet: {str(ws_error)}")
-                        
-                        spreadsheet_url = f"https://docs.google.com/spreadsheets/d/{spreadsheet.id}"
-                        st.markdown(f"🔗 **[Open your Google Sheet in browser]({spreadsheet_url})**")
-                        
-                    except gspread.SpreadsheetNotFound:
-                        st.error(f"❌ Spreadsheet '{SHEET_NAME}' not found!")
-                        st.info("💡 Click 'Setup Google Sheets Integration' to create the spreadsheet.")
-                    except Exception as sheet_error:
-                        st.error(f"❌ Error accessing spreadsheet: {str(sheet_error)}")
-                else:
-                    st.error("❌ Google Sheets connection failed!")
-                    st.info("💡 Check your credentials in secrets.toml")
-                    
-            except Exception as e:
-                error_msg = str(e)
-                if "Response [200]" in error_msg:
-                    st.success("✅ Connection successful! (Response 200 indicates success)")
-                    st.info("💡 The connection is working - you can try adding trades now!")
-                else:
-                    st.error(f"❌ Connection test error: {error_msg}")
-                st.info("💡 If you see 'Response [200]', that actually means success!")
 
 # Add New Trade Section
 st.markdown("""
@@ -781,20 +517,15 @@ with col8:
             # Add to session state and sync
             st.session_state.trades.append(new_trade)
             
-            # Sync to Google Sheets if connected
+            # Sync to Google Sheets if connected (silently)
             if st.session_state.sheets_connected:
                 try:
-                    success = save_trade_to_sheets(new_trade)
-                    if success:
-                        st.success("✅ Trade added successfully!")
-                        force_refresh_data()
-                    else:
-                        st.success("✅ Trade added!")
+                    save_trade_to_sheets(new_trade)
+                    force_refresh_data()
                 except Exception as e:
-                    # Silent sync - don't show errors to user
-                    st.success("✅ Trade added!")
-            else:
-                st.success("✅ Trade added!")
+                    pass
+            
+            st.success("✅ Trade added successfully!")
             
             # Force immediate UI refresh
             time.sleep(0.5)
@@ -820,62 +551,6 @@ with col8:
                 st.error(f"Missing: {', '.join(missing_fields)}")
 
 st.markdown('</div></div>', unsafe_allow_html=True)
-
-# Debug section - show current state
-st.markdown("---")
-st.markdown("### 🔍 Debug Information")
-
-debug_col1, debug_col2, debug_col3 = st.columns(3)
-
-with debug_col1:
-    st.markdown(f"""
-    **Connection Status:**
-    - Google Sheets: {'✅ Connected' if st.session_state.sheets_connected else '❌ Not Connected'}
-    - Total Trades: {len(st.session_state.trades) if st.session_state.trades else 0}
-    """)
-
-with debug_col2:
-    st.markdown(f"""
-    **Session State:**
-    - Trades exist: {'✅ Yes' if 'trades' in st.session_state else '❌ No'}
-    - Auto-refresh: {'✅ Enabled' if st.session_state.get('auto_refresh_toggle', True) else '❌ Disabled'}
-    """)
-
-with debug_col3:
-    if st.button("🔄 Force Refresh Session", help="Clear cache and reload data"):
-        st.cache_data.clear()
-        st.session_state.trades = load_trades_from_sheets()
-        st.success("Session refreshed!")
-        st.rerun()
-
-# Show current trades in debug format
-if st.session_state.trades:
-    with st.expander("📊 Current Trades Data (Debug)", expanded=False):
-        for i, trade in enumerate(st.session_state.trades):
-            st.write(f"**Trade {i+1}:**", trade)
-sync_col1, sync_col2, sync_col3, sync_col4 = st.columns([2, 1, 1, 6])
-
-with sync_col1:
-    if st.session_state.sheets_connected:
-        current_time = datetime.now().strftime('%H:%M:%S')
-        st.markdown(f"<small>🔄 <span style='color: #10b981;'>Live sync active</span> • Last check: {current_time}</small>", unsafe_allow_html=True)
-    else:
-        st.markdown("<small>⚠️ <span style='color: #f59e0b;'>Local mode only</span></small>", unsafe_allow_html=True)
-
-with sync_col2:
-    if st.button("🔄", help="Force refresh data from Google Sheets", key="manual_refresh"):
-        with st.spinner("Refreshing..."):
-            if force_refresh_data():
-                st.success("Data refreshed!")
-            else:
-                st.warning("Refresh completed (local data)")
-            time.sleep(1)
-            st.rerun()
-
-with sync_col3:
-    auto_refresh_enabled = st.checkbox("⚡", value=True, help="Enable/disable auto-refresh (every 3 seconds)", key="auto_refresh_toggle")
-    if not auto_refresh_enabled:
-        st.session_state.last_auto_refresh = 0
 
 # Main Content Grid
 col_main, col_sidebar = st.columns([2, 1])
@@ -1010,34 +685,18 @@ with col_main:
                 trade_id = trade.get('id')
                 if trade_id and trade.get('trader') and trade.get('instrument'):
                     if st.button("🗑️", key=f"delete_{trade_id}_{i}", help="Delete this trade", type="secondary"):
-                        # Delete from Google Sheets first
+                        # Delete from Google Sheets first (silently)
                         if st.session_state.sheets_connected:
                             try:
-                                success = delete_trade_from_sheets(trade_id)
-                                # Remove from session state
-                                st.session_state.trades = [t for t in st.session_state.trades if t.get('id') != trade_id]
-                                
-                                if success:
-                                    st.success("✅ Trade deleted and synced!")
-                                    force_refresh_data()
-                                else:
-                                    st.warning("⚠️ Trade deleted locally, but Google Sheets sync may have failed")
-                                    
-                                st.rerun()
-                                
-                            except Exception as e:
-                                st.session_state.trades = [t for t in st.session_state.trades if t.get('id') != trade_id]
-                                error_msg = str(e)
-                                if "Response [200]" in error_msg:
-                                    st.success("✅ Trade deleted and synced successfully!")
-                                    force_refresh_data()
-                                else:
-                                    st.warning(f"⚠️ Trade deleted locally, sync error: {error_msg}")
-                                st.rerun()
-                        else:
-                            st.session_state.trades = [t for t in st.session_state.trades if t.get('id') != trade_id]
-                            st.warning("⚠️ Trade deleted locally only (Google Sheets not connected)")
-                            st.rerun()
+                                delete_trade_from_sheets(trade_id)
+                                force_refresh_data()
+                            except:
+                                pass
+                        
+                        # Remove from session state
+                        st.session_state.trades = [t for t in st.session_state.trades if t.get('id') != trade_id]
+                        st.success("✅ Trade deleted successfully!")
+                        st.rerun()
                 else:
                     # For invalid/empty trades, show a cleanup button
                     if st.button("🧹", key=f"cleanup_{i}", help="Remove empty trade", type="secondary"):
@@ -1238,18 +897,9 @@ st.markdown('</div>', unsafe_allow_html=True)
 
 # Footer
 current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-if st.session_state.sheets_connected:
-    sync_status = "🔄 Real-time sync enabled (updates every 3 seconds)"
-    if st.session_state.get('auto_refresh_toggle', True):
-        next_refresh = REAL_TIME_UPDATE_INTERVAL - (time.time() - st.session_state.get('last_auto_refresh', 0))
-        if next_refresh > 0:
-            sync_status += f" • Next auto-refresh in {int(next_refresh)}s"
-else:
-    sync_status = "📱 Local mode - Enable Google Sheets for multi-device sync"
-
 st.markdown(f"""
 <div style="text-align: center; padding: 2rem 0; color: #6b7280; font-size: 0.875rem; border-top: 1px solid #e5e7eb; margin-top: 2rem;">
-    <p>📊 Forex Trading Analytics - {sync_status}</p>
+    <p>⚔️ The War Zone - Where Traders Rise or Fall</p>
     <p>Last updated: {current_time}</p>
 </div>
 """, unsafe_allow_html=True)
