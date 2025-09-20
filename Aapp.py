@@ -709,37 +709,51 @@ with col8:
                 'result': result
             }
             
-            # Save to Google Sheets first
+            # Debug: Show what we're trying to add
+            st.write("🔍 Debug: Adding trade:", new_trade)
+            
+            # Always add to local session state first
+            st.session_state.trades.append(new_trade)
+            st.success(f"✅ Trade added locally! Total trades: {len(st.session_state.trades)}")
+            
+            # Try to sync to Google Sheets if connected
             if st.session_state.sheets_connected:
+                st.info("🔄 Attempting to sync to Google Sheets...")
                 try:
                     success = save_trade_to_sheets(new_trade)
-                    st.session_state.trades.append(new_trade)
-                    
                     if success:
-                        st.success("✅ Trade added successfully and synced to Google Sheets!")
+                        st.success("✅ Successfully synced to Google Sheets!")
                         force_refresh_data()
-                        time.sleep(0.5)
                     else:
-                        st.warning("⚠️ Trade added locally but Google Sheets sync may have failed.")
-                        
-                    st.rerun()
-                        
+                        st.warning("⚠️ Google Sheets sync failed, but trade saved locally.")
                 except Exception as e:
-                    st.session_state.trades.append(new_trade)
-                    error_msg = str(e)
-                    if "Response [200]" in error_msg:
-                        st.success("✅ Trade added and synced successfully!")
-                        force_refresh_data()
-                    else:
-                        st.error(f"❌ Error syncing to Google Sheets: {error_msg}")
-                        st.warning("⚠️ Trade added locally only")
-                    st.rerun()
+                    st.error(f"❌ Google Sheets sync error: {str(e)}")
+                    st.info("💡 Trade still saved locally and will be visible.")
             else:
-                st.session_state.trades.append(new_trade)
-                st.warning("⚠️ Trade added locally only (Google Sheets not connected)")
-                st.rerun()
+                st.warning("⚠️ Google Sheets not connected - trade saved locally only.")
+            
+            # Force immediate UI refresh
+            time.sleep(1)  # Give user time to see messages
+            st.rerun()
         else:
-            st.error("Please fill in all fields to add a trade.")
+            st.error("❌ Please fill in all fields to add a trade.")
+            # Show which fields are missing
+            missing_fields = []
+            if trader == "Select Trader":
+                missing_fields.append("Trader")
+            if instrument == "Select Instrument":
+                missing_fields.append("Instrument")
+            if outcome == "Select Outcome":
+                missing_fields.append("Outcome")
+            if not entry:
+                missing_fields.append("Entry Price")
+            if not sl:
+                missing_fields.append("Stop Loss")
+            if not target:
+                missing_fields.append("Target Price")
+            
+            if missing_fields:
+                st.error(f"Missing: {', '.join(missing_fields)}")
 
 st.markdown('</div></div>', unsafe_allow_html=True)
 
