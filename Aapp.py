@@ -61,23 +61,40 @@ def load_trades_from_sheets():
                 while len(row) < 12:
                     row.append('')
                 
-                # Only process rows with essential data
-                if row[2] and row[3]:  # trader and instrument exist
-                    processed_record = {
-                        'id': int(row[0]) if row[0] and str(row[0]).strip().isdigit() else i,
-                        'date': str(row[1]).strip() if row[1] else '',
-                        'trader': str(row[2]).strip(),
-                        'instrument': str(row[3]).strip(),
-                        'entry': float(row[4]) if row[4] and str(row[4]).replace('.', '').replace('-', '').isdigit() else 0.0,
-                        'sl': float(row[5]) if row[5] and str(row[5]).replace('.', '').replace('-', '').isdigit() else 0.0,
-                        'target': float(row[6]) if row[6] and str(row[6]).replace('.', '').replace('-', '').isdigit() else 0.0,
-                        'risk': float(row[7]) if row[7] and str(row[7]).replace('.', '').replace('-', '').isdigit() else 0.0,
-                        'reward': float(row[8]) if row[8] and str(row[8]).replace('.', '').replace('-', '').isdigit() else 0.0,
-                        'rrRatio': float(row[9]) if row[9] and str(row[9]).replace('.', '').replace('-', '').isdigit() else 0.0,
-                        'outcome': str(row[10]).strip() if row[10] else '',
-                        'result': str(row[11]).strip() if row[11] else ''
-                    }
-                    processed_records.append(processed_record)
+                # Only process rows with complete valid data
+                if (row[2] and row[3] and row[4] and row[5] and row[6] and 
+                    str(row[2]).strip() not in ['', 'trader'] and 
+                    str(row[3]).strip() not in ['', 'instrument'] and
+                    str(row[4]).strip() not in ['', '0.0', '0'] and
+                    str(row[10]).strip() not in ['', 'outcome'] and
+                    str(row[11]).strip() not in ['', 'result']):
+                    
+                    try:
+                        entry_val = float(row[4])
+                        sl_val = float(row[5]) 
+                        target_val = float(row[6])
+                        
+                        # Skip if all prices are zero
+                        if entry_val == 0.0 and sl_val == 0.0 and target_val == 0.0:
+                            continue
+                            
+                        processed_record = {
+                            'id': int(row[0]) if row[0] and str(row[0]).strip().isdigit() else i,
+                            'date': str(row[1]).strip() if row[1] else '',
+                            'trader': str(row[2]).strip(),
+                            'instrument': str(row[3]).strip(),
+                            'entry': entry_val,
+                            'sl': sl_val,
+                            'target': target_val,
+                            'risk': float(row[7]) if row[7] and str(row[7]).replace('.', '').replace('-', '').isdigit() else abs(entry_val - sl_val),
+                            'reward': float(row[8]) if row[8] and str(row[8]).replace('.', '').replace('-', '').isdigit() else abs(target_val - entry_val),
+                            'rrRatio': float(row[9]) if row[9] and str(row[9]).replace('.', '').replace('-', '').isdigit() else 0.0,
+                            'outcome': str(row[10]).strip(),
+                            'result': str(row[11]).strip()
+                        }
+                        processed_records.append(processed_record)
+                    except (ValueError, TypeError):
+                        continue
                     
             except (ValueError, TypeError, IndexError):
                 continue
@@ -609,7 +626,12 @@ with col_main:
         
         # Create columns for each trade row (sort by ID descending to show newest first)
         sorted_trades = sorted(st.session_state.trades, key=lambda x: x.get('id', 0), reverse=True)
-        for i, trade in enumerate(sorted_trades):
+        
+        # Use a more stable approach to prevent button glitches
+        if 'delete_confirmations' not in st.session_state:
+            st.session_state.delete_confirmations = set()
+            
+        for idx, trade in enumerate(sorted_trades):
             cols = st.columns([1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.2, 1.2, 1.2, 1.8, 1.5, 1])
             
             with cols[0]:
@@ -641,33 +663,23 @@ with col_main:
                     st.markdown('<span style="background-color: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 12px; font-weight: 500; font-size: 0.75rem;">Win</span>', unsafe_allow_html=True)
                 elif result == 'Loss':
                     st.markdown('<span style="background-color: #fee2e2; color: #dc2626; padding: 4px 8px; border-radius: 12px; font-weight: 500; font-size: 0.75rem;">Loss</span>', unsafe_allow_html=True)
-                else:
-                    st.markdown('<span style="background-color: #f3f4f6; color: #6b7280; padding: 4px 8px; border-radius: 12px; font-weight: 500; font-size: 0.75rem;">Unknown</span>', unsafe_allow_html=True)
             with cols[11]:
-                # Only show delete button for valid trades
                 trade_id = trade.get('id')
-                if trade_id and trade.get('trader') and trade.get('instrument'):
-                    if st.button("🗑️", key=f"delete_{trade_id}_{i}", help="Delete this trade", type="secondary"):
-                        # Immediate UI update - remove from session state first
-                        st.session_state.trades = [t for t in st.session_state.trades if t.get('id') != trade_id]
-                        
-                        # Background sync to Google Sheets (non-blocking)
-                        if st.session_state.sheets_connected:
-                            try:
-                                delete_trade_from_sheets(trade_id)
-                                st.session_state.last_data_hash = hash(str(st.session_state.trades))
-                            except:
-                                pass
-                        
-                        st.success("✅ Trade deleted!")
-                        st.rerun()  # Immediate UI update
-                else:
-                    # For invalid/empty trades, show a cleanup button
-                    if st.button("🧹", key=f"cleanup_{i}", help="Remove empty trade", type="secondary"):
-                        if trade in st.session_state.trades:
-                            st.session_state.trades.remove(trade)
-                            st.success("Empty trade removed!")
-                            st.rerun()
+                stable_key = f"del_{trade_id}_{hash(str(trade))}"
+                
+                if st.button("🗑️", key=stable_key, help="Delete this trade", type="secondary"):
+                    # Immediate removal from session state
+                    st.session_state.trades = [t for t in st.session_state.trades if t.get('id') != trade_id]
+                    
+                    # Background Google Sheets sync
+                    if st.session_state.sheets_connected:
+                        try:
+                            delete_trade_from_sheets(trade_id)
+                            st.session_state.last_data_hash = hash(str(st.session_state.trades))
+                        except:
+                            pass
+                    
+                    st.rerun()
 
 with col_sidebar:
     # Performance Metrics
