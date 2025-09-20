@@ -390,17 +390,8 @@ with col1:
 
 with col2:
     st.markdown('<div class="form-group"><label>Instrument</label></div>', unsafe_allow_html=True)
-    instrument = st.text_input("", placeholder="Enter Instrument", value=st.session_state.selected_instrument, key="instrument_input", label_visibility="collapsed")
-    
-    # Instrument pairs
-    instrument_pairs = ['XAUUSD', 'USDOIL', 'BTCUSD', 'USTECH', 'EURUSD', 'GBPUSD', 'AUDUSD', 'USDJPY', 'USDCAD', 'NZDUSD']
-    
-    tags_html = '<div class="instrument-tags">'
-    for pair in instrument_pairs:
-        tags_html += f'<span class="instrument-tag" onclick="document.querySelector(\'input[data-testid=\\\"stTextInput\\\"] input\').value=\'{pair}\'">{pair}</span>'
-    tags_html += '</div>'
-    
-    st.markdown(tags_html, unsafe_allow_html=True)
+    instrument_pairs = ['Select Instrument', 'XAUUSD', 'USDOIL', 'BTCUSD', 'USTECH', 'EURUSD', 'GBPUSD', 'AUDUSD', 'USDJPY', 'USDCAD', 'NZDUSD']
+    instrument = st.selectbox("", instrument_pairs, key="instrument_select", label_visibility="collapsed")
 
 with col3:
     st.markdown('<div class="form-group"><label>Date</label></div>', unsafe_allow_html=True)
@@ -428,7 +419,7 @@ with col7:
 with col8:
     st.markdown('<div style="padding-top: 1.5rem;"></div>', unsafe_allow_html=True)
     if st.button("➕ Add Trade", type="primary", use_container_width=True):
-        if trader != "Select Trader" and instrument and outcome != "Select Outcome" and entry and sl and target:
+        if trader != "Select Trader" and instrument != "Select Instrument" and outcome != "Select Outcome" and entry and sl and target:
             risk = abs(entry - sl)
             reward = abs(target - entry)
             rr_ratio = reward / risk if risk != 0 else 0
@@ -452,6 +443,8 @@ with col8:
             st.session_state.trades.append(new_trade)
             st.success("Trade added successfully!")
             st.rerun()
+        else:
+            st.error("Please fill in all fields to add a trade.")
 
 st.markdown('</div></div>', unsafe_allow_html=True)
 
@@ -508,70 +501,50 @@ with col_main:
     </div>
     """, unsafe_allow_html=True)
     
-    # Create DataFrame for the table
-    df_trades = pd.DataFrame(st.session_state.trades)
-    
-    # Format the dataframe for display
-    if not df_trades.empty:
-        display_df = df_trades.copy()
+    # Display trades with individual delete buttons
+    if not st.session_state.trades:
+        st.info("No trades recorded yet. Add a trade using the form above.")
+    else:
+        # Header row
+        header_cols = st.columns([1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.2, 1.2, 1.2, 1.8, 1.5, 1])
+        headers = ['Date', 'Trader', 'Instrument', 'Entry', 'SL', 'Target', 'Risk', 'Reward', 'R/R Ratio', 'Outcome', 'Result', 'Actions']
         
-        # Add a delete column with proper icon styling
-        delete_buttons = []
-        for i in range(len(display_df)):
-            delete_buttons.append('🗑️')
+        for i, header in enumerate(headers):
+            with header_cols[i]:
+                st.markdown(f'<div style="font-weight: bold; color: #374151; padding: 0.5rem 0; border-bottom: 2px solid #e5e7eb; font-size: 0.875rem;">{header}</div>', unsafe_allow_html=True)
         
-        display_df['Actions'] = delete_buttons
-        
-        # Custom styling for the dataframe
-        def color_result(val):
-            if val == 'Win':
-                return 'background-color: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 12px; font-weight: 500;'
-            elif val == 'Loss':
-                return 'background-color: #fee2e2; color: #dc2626; padding: 4px 8px; border-radius: 12px; font-weight: 500;'
-            else:
-                return ''
-        
-        # Apply custom CSS for delete buttons
-        st.markdown("""
-        <style>
-        .stDataFrame [data-testid="column"]:last-child div[data-testid="cell"] {
-            background-color: #ef4444 !important;
-            color: white !important;
-            text-align: center !important;
-            cursor: pointer !important;
-            border-radius: 4px !important;
-        }
-        .stDataFrame [data-testid="column"]:last-child div[data-testid="cell"]:hover {
-            background-color: #dc2626 !important;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-        
-        st.dataframe(
-            display_df[['date', 'trader', 'instrument', 'entry', 'sl', 'target', 'risk', 'reward', 'rrRatio', 'outcome', 'result', 'Actions']].rename(columns={
-                'date': 'Date',
-                'trader': 'Trader', 
-                'instrument': 'Instrument',
-                'entry': 'Entry',
-                'sl': 'SL',
-                'target': 'Target',
-                'risk': 'Risk',
-                'reward': 'Reward',
-                'rrRatio': 'R/R Ratio',
-                'outcome': 'Outcome',
-                'result': 'Result',
-                'Actions': 'Actions'
-            }),
-            use_container_width=True,
-            hide_index=True
-        )
-        
-        # Delete functionality with red background
-        col_del1, col_del2 = st.columns([3, 1])
-        with col_del2:
-            if st.button("🗑️ Delete Last Trade", type="secondary", help="Delete the most recent trade"):
-                if st.session_state.trades:
-                    st.session_state.trades.pop()
+        # Create columns for each trade row
+        for i, trade in enumerate(st.session_state.trades):
+            cols = st.columns([1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.2, 1.2, 1.2, 1.8, 1.5, 1])
+            
+            with cols[0]:
+                st.write(trade['date'])
+            with cols[1]:
+                st.write(trade['trader'])
+            with cols[2]:
+                st.write(trade['instrument'])
+            with cols[3]:
+                st.write(f"{trade['entry']}")
+            with cols[4]:
+                st.write(f"{trade['sl']}")
+            with cols[5]:
+                st.write(f"{trade['target']}")
+            with cols[6]:
+                st.write(f"{trade['risk']}")
+            with cols[7]:
+                st.write(f"{trade['reward']}")
+            with cols[8]:
+                st.write(f"{trade['rrRatio']}")
+            with cols[9]:
+                st.write(trade['outcome'])
+            with cols[10]:
+                if trade['result'] == 'Win':
+                    st.markdown('<span style="background-color: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 12px; font-weight: 500; font-size: 0.75rem;">Win</span>', unsafe_allow_html=True)
+                else:
+                    st.markdown('<span style="background-color: #fee2e2; color: #dc2626; padding: 4px 8px; border-radius: 12px; font-weight: 500; font-size: 0.75rem;">Loss</span>', unsafe_allow_html=True)
+            with cols[11]:
+                if st.button("🗑️", key=f"delete_{i}", help="Delete this trade", type="secondary"):
+                    st.session_state.trades.pop(i)
                     st.rerun()
 
 with col_sidebar:
