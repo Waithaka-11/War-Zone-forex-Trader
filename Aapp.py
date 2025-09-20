@@ -15,8 +15,8 @@ SHEET_NAME = "Forex Trading Analytics"
 WORKSHEET_NAME = "Trades"
 
 # Real-time update configuration
-REAL_TIME_UPDATE_INTERVAL = 3  # Update every 3 seconds
-CACHE_TTL = 5  # Cache data for only 5 seconds
+REAL_TIME_UPDATE_INTERVAL = 10  # Update every 10 seconds (reduced frequency)
+CACHE_TTL = 30  # Cache data for 30 seconds (longer cache)
 
 # Initialize Google Sheets connection
 @st.cache_resource
@@ -35,69 +35,51 @@ def init_connection():
     except Exception as e:
         return None
 
-@st.cache_data(ttl=CACHE_TTL)  # Much shorter cache - 5 seconds only
+@st.cache_data(ttl=CACHE_TTL, show_spinner=False)  # Longer cache with no spinner
 def load_trades_from_sheets():
-    """Load trades from Google Sheets with minimal caching for real-time updates"""
+    """Load trades from Google Sheets with optimized caching"""
     try:
         gc = init_connection()
         if gc is None:
             return load_fallback_data()
         
-        # Open the spreadsheet
+        # Single API call to get all data
         spreadsheet = gc.open(SHEET_NAME)
         sheet = spreadsheet.worksheet(WORKSHEET_NAME)
-        
-        # Get all values as a list of lists first
         all_values = sheet.get_all_values()
         
-        if not all_values or len(all_values) < 2:  # No data or just headers
+        if not all_values or len(all_values) < 2:
             return load_fallback_data()
         
-        # First row should be headers
-        headers = all_values[0]
-        data_rows = all_values[1:]
-        
-        # Expected headers
-        expected_headers = ['id', 'date', 'trader', 'instrument', 'entry', 'sl', 'target', 'risk', 'reward', 'rrRatio', 'outcome', 'result']
-        
-        # If headers don't match expected, try to fix silently
-        if headers != expected_headers:
-            # Try to use the data anyway if it has the right number of columns
-            if len(headers) < 12:
-                return load_fallback_data()
-        
-        # Process each data row
+        # Process data efficiently
         processed_records = []
-        for i, row in enumerate(data_rows):
-            # Skip empty rows
+        for i, row in enumerate(all_values[1:], 1):  # Skip headers
             if not any(str(cell).strip() for cell in row):
                 continue
                 
             try:
-                # Ensure row has enough columns
                 while len(row) < 12:
                     row.append('')
                 
-                processed_record = {
-                    'id': int(row[0]) if row[0] and str(row[0]).strip().isdigit() else i + 1,
-                    'date': str(row[1]).strip() if row[1] else '',
-                    'trader': str(row[2]).strip() if row[2] else '',
-                    'instrument': str(row[3]).strip() if row[3] else '',
-                    'entry': float(row[4]) if row[4] and str(row[4]).replace('.', '').replace('-', '').isdigit() else 0.0,
-                    'sl': float(row[5]) if row[5] and str(row[5]).replace('.', '').replace('-', '').isdigit() else 0.0,
-                    'target': float(row[6]) if row[6] and str(row[6]).replace('.', '').replace('-', '').isdigit() else 0.0,
-                    'risk': float(row[7]) if row[7] and str(row[7]).replace('.', '').replace('-', '').isdigit() else 0.0,
-                    'reward': float(row[8]) if row[8] and str(row[8]).replace('.', '').replace('-', '').isdigit() else 0.0,
-                    'rrRatio': float(row[9]) if row[9] and str(row[9]).replace('.', '').replace('-', '').isdigit() else 0.0,
-                    'outcome': str(row[10]).strip() if row[10] else '',
-                    'result': str(row[11]).strip() if row[11] else ''
-                }
-                
-                # Only add records that have meaningful data
-                if processed_record['trader'] and processed_record['instrument']:
+                # Only process rows with essential data
+                if row[2] and row[3]:  # trader and instrument exist
+                    processed_record = {
+                        'id': int(row[0]) if row[0] and str(row[0]).strip().isdigit() else i,
+                        'date': str(row[1]).strip() if row[1] else '',
+                        'trader': str(row[2]).strip(),
+                        'instrument': str(row[3]).strip(),
+                        'entry': float(row[4]) if row[4] and str(row[4]).replace('.', '').replace('-', '').isdigit() else 0.0,
+                        'sl': float(row[5]) if row[5] and str(row[5]).replace('.', '').replace('-', '').isdigit() else 0.0,
+                        'target': float(row[6]) if row[6] and str(row[6]).replace('.', '').replace('-', '').isdigit() else 0.0,
+                        'risk': float(row[7]) if row[7] and str(row[7]).replace('.', '').replace('-', '').isdigit() else 0.0,
+                        'reward': float(row[8]) if row[8] and str(row[8]).replace('.', '').replace('-', '').isdigit() else 0.0,
+                        'rrRatio': float(row[9]) if row[9] and str(row[9]).replace('.', '').replace('-', '').isdigit() else 0.0,
+                        'outcome': str(row[10]).strip() if row[10] else '',
+                        'result': str(row[11]).strip() if row[11] else ''
+                    }
                     processed_records.append(processed_record)
                     
-            except (ValueError, TypeError, IndexError) as e:
+            except (ValueError, TypeError, IndexError):
                 continue
         
         return processed_records if processed_records else load_fallback_data()
@@ -106,53 +88,32 @@ def load_trades_from_sheets():
         return load_fallback_data()
 
 def save_trade_to_sheets(trade_data):
-    """Save a single trade to Google Sheets"""
+    """Save a single trade to Google Sheets - optimized for speed"""
     try:
         gc = init_connection()
         if gc is None:
             return False
         
-        # Open the spreadsheet and worksheet
         spreadsheet = gc.open(SHEET_NAME)
         sheet = spreadsheet.worksheet(WORKSHEET_NAME)
         
-        # Prepare row data in the same order as headers
+        # Prepare row data efficiently
         row_data = [
-            str(trade_data['id']),
-            str(trade_data['date']),
-            str(trade_data['trader']),
-            str(trade_data['instrument']),
-            float(trade_data['entry']),
-            float(trade_data['sl']),
-            float(trade_data['target']),
-            float(trade_data['risk']),
-            float(trade_data['reward']),
-            float(trade_data['rrRatio']),
-            str(trade_data['outcome']),
-            str(trade_data['result'])
+            str(trade_data['id']), str(trade_data['date']), str(trade_data['trader']),
+            str(trade_data['instrument']), float(trade_data['entry']), float(trade_data['sl']),
+            float(trade_data['target']), float(trade_data['risk']), float(trade_data['reward']),
+            float(trade_data['rrRatio']), str(trade_data['outcome']), str(trade_data['result'])
         ]
         
-        # Add the row and verify it was added
-        response = sheet.append_row(row_data, value_input_option='RAW')
-        
-        # Check if the response indicates success
-        if response and 'updates' in response:
-            return True
-        else:
-            # Even if response format is different, try to verify the row was added
-            time.sleep(1)  # Brief delay to allow for propagation
-            all_records = sheet.get_all_records()
-            # Check if our trade was added (look for matching ID)
-            for record in all_records:
-                if str(record.get('id', '')) == str(trade_data['id']):
-                    return True
-            return False
+        # Single API call
+        sheet.append_row(row_data, value_input_option='RAW')
+        return True
         
     except:
         return False
 
 def delete_trade_from_sheets(trade_id):
-    """Delete a trade from Google Sheets"""
+    """Delete a trade from Google Sheets - optimized for speed"""
     try:
         gc = init_connection()
         if gc is None:
@@ -161,16 +122,12 @@ def delete_trade_from_sheets(trade_id):
         spreadsheet = gc.open(SHEET_NAME)
         sheet = spreadsheet.worksheet(WORKSHEET_NAME)
         
-        # Find the row with the trade ID
-        try:
-            cell = sheet.find(str(trade_id))
-            if cell and cell.col == 1:  # Make sure it's in the ID column
-                sheet.delete_rows(cell.row)
-                return True
-            else:
-                return False
-        except gspread.exceptions.CellNotFound:
-            return False
+        # Find and delete in single operation
+        cell = sheet.find(str(trade_id))
+        if cell and cell.col == 1:
+            sheet.delete_rows(cell.row)
+            return True
+        return False
         
     except:
         return False
@@ -230,39 +187,41 @@ def load_fallback_data():
 
 # Real-time update functions
 def force_refresh_data():
-    """Force refresh data from Google Sheets and update session state"""
+    """Force refresh data from Google Sheets and update session state - optimized"""
     try:
+        # Clear cache and get fresh data
         st.cache_data.clear()
-        if st.session_state.sheets_connected:
-            fresh_data = load_trades_from_sheets()
-            st.session_state.trades = fresh_data
-            return True
-        return False
-    except Exception as e:
+        fresh_data = load_trades_from_sheets()
+        st.session_state.trades = fresh_data
+        st.session_state.last_data_hash = hash(str(fresh_data))  # Track changes
+        return True
+    except:
         return False
 
 def auto_refresh_trades():
-    """Auto-refresh trades data for real-time updates"""
+    """Auto-refresh trades data - optimized to reduce unnecessary updates"""
     if 'last_auto_refresh' not in st.session_state:
         st.session_state.last_auto_refresh = time.time()
+    if 'last_data_hash' not in st.session_state:
+        st.session_state.last_data_hash = None
         
-    # Auto-refresh every few seconds if Google Sheets is connected
+    # Check if enough time has passed and we're connected
     if (st.session_state.sheets_connected and 
         time.time() - st.session_state.last_auto_refresh > REAL_TIME_UPDATE_INTERVAL):
         
         st.session_state.last_auto_refresh = time.time()
         
-        # Get fresh data from Google Sheets
         try:
-            st.cache_data.clear()
+            # Get fresh data without clearing cache immediately
             fresh_data = load_trades_from_sheets()
+            current_hash = hash(str(fresh_data))
             
-            # Only update and rerun if data actually changed
-            if 'trades' not in st.session_state or st.session_state.trades != fresh_data:
+            # Only update if data actually changed
+            if st.session_state.last_data_hash != current_hash:
                 st.session_state.trades = fresh_data
+                st.session_state.last_data_hash = current_hash
                 st.rerun()
-        except Exception as e:
-            # Silently handle refresh errors to avoid disrupting user experience
+        except:
             pass
 
 # Page configuration
@@ -406,18 +365,22 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Initialize session state for trades with real-time data
+# Initialize session state with optimized data loading
 if 'trades' not in st.session_state:
     st.session_state.trades = load_trades_from_sheets()
+    st.session_state.last_data_hash = hash(str(st.session_state.trades))
     
 if 'sheets_connected' not in st.session_state:
     connection = init_connection()
     st.session_state.sheets_connected = connection is not None
-    # Silently setup Google Sheets if connected
+    # Silently setup Google Sheets if connected (non-blocking)
     if st.session_state.sheets_connected:
-        setup_google_sheet_silently()
+        try:
+            setup_google_sheet_silently()
+        except:
+            pass
 
-# Enable real-time updates when connected to Google Sheets
+# Optimized real-time updates
 if st.session_state.sheets_connected:
     auto_refresh_trades()
 
@@ -685,18 +648,19 @@ with col_main:
                 trade_id = trade.get('id')
                 if trade_id and trade.get('trader') and trade.get('instrument'):
                     if st.button("🗑️", key=f"delete_{trade_id}_{i}", help="Delete this trade", type="secondary"):
-                        # Delete from Google Sheets first (silently)
+                        # Immediate UI update - remove from session state first
+                        st.session_state.trades = [t for t in st.session_state.trades if t.get('id') != trade_id]
+                        
+                        # Background sync to Google Sheets (non-blocking)
                         if st.session_state.sheets_connected:
                             try:
                                 delete_trade_from_sheets(trade_id)
-                                force_refresh_data()
+                                st.session_state.last_data_hash = hash(str(st.session_state.trades))
                             except:
                                 pass
                         
-                        # Remove from session state
-                        st.session_state.trades = [t for t in st.session_state.trades if t.get('id') != trade_id]
-                        st.success("✅ Trade deleted successfully!")
-                        st.rerun()
+                        st.success("✅ Trade deleted!")
+                        st.rerun()  # Immediate UI update
                 else:
                     # For invalid/empty trades, show a cleanup button
                     if st.button("🧹", key=f"cleanup_{i}", help="Remove empty trade", type="secondary"):
