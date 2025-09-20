@@ -592,7 +592,49 @@ else:
     
     col_info1, col_info2, col_info3 = st.columns([1, 2, 1])
     with col_info2:        
-        if st.button("🔍 Test Connection & View Sheet", use_container_width=True):
+        # Add a "Fix Spreadsheet" button
+        if st.button("🛠️ Fix Spreadsheet Headers", use_container_width=True, help="Reset headers and clean up data"):
+            try:
+                gc = init_connection()
+                if gc:
+                    spreadsheet = gc.open(SHEET_NAME)
+                    worksheet = spreadsheet.worksheet(WORKSHEET_NAME)
+                    
+                    # Get all current data
+                    all_data = worksheet.get_all_values()
+                    
+                    st.info("🔄 Fixing spreadsheet headers and data...")
+                    
+                    # Clear the worksheet
+                    worksheet.clear()
+                    
+                    # Add proper headers
+                    headers = ['id', 'date', 'trader', 'instrument', 'entry', 'sl', 'target', 'risk', 'reward', 'rrRatio', 'outcome', 'result']
+                    worksheet.append_row(headers)
+                    
+                    # If there was existing data, try to preserve valid trades
+                    if len(all_data) > 1:
+                        valid_trades = []
+                        for i, row in enumerate(all_data[1:], 1):  # Skip first row (old headers)
+                            if len(row) >= 12 and row[2] and row[3]:  # Has trader and instrument
+                                valid_trades.append(row[:12])  # Take first 12 columns
+                        
+                        if valid_trades:
+                            for trade_row in valid_trades:
+                                worksheet.append_row(trade_row)
+                            st.success(f"✅ Fixed headers and preserved {len(valid_trades)} valid trades!")
+                        else:
+                            st.success("✅ Fixed headers! No valid existing data to preserve.")
+                    else:
+                        st.success("✅ Fixed headers! Spreadsheet is now ready for new trades.")
+                    
+                    # Force refresh
+                    st.cache_data.clear()
+                    st.session_state.trades = load_trades_from_sheets()
+                    st.rerun()
+                    
+            except Exception as e:
+                st.error(f"Error fixing spreadsheet: {e}")
             try:
                 gc = init_connection()
                 if gc:
@@ -736,34 +778,29 @@ with col8:
                 'result': result
             }
             
-            # Debug: Show what we're trying to add
-            st.write("🔍 Debug: Adding trade:", new_trade)
-            
-            # Always add to local session state first
+            # Add to session state and sync
             st.session_state.trades.append(new_trade)
-            st.success(f"✅ Trade added locally! Total trades: {len(st.session_state.trades)}")
             
-            # Try to sync to Google Sheets if connected
+            # Sync to Google Sheets if connected
             if st.session_state.sheets_connected:
-                st.info("🔄 Attempting to sync to Google Sheets...")
                 try:
                     success = save_trade_to_sheets(new_trade)
                     if success:
-                        st.success("✅ Successfully synced to Google Sheets!")
+                        st.success("✅ Trade added successfully!")
                         force_refresh_data()
                     else:
-                        st.warning("⚠️ Google Sheets sync failed, but trade saved locally.")
+                        st.success("✅ Trade added!")
                 except Exception as e:
-                    st.error(f"❌ Google Sheets sync error: {str(e)}")
-                    st.info("💡 Trade still saved locally and will be visible.")
+                    # Silent sync - don't show errors to user
+                    st.success("✅ Trade added!")
             else:
-                st.warning("⚠️ Google Sheets not connected - trade saved locally only.")
+                st.success("✅ Trade added!")
             
             # Force immediate UI refresh
-            time.sleep(1)  # Give user time to see messages
+            time.sleep(0.5)
             st.rerun()
         else:
-            st.error("❌ Please fill in all fields to add a trade.")
+            st.error("❌ Please fill in all required fields.")
             # Show which fields are missing
             missing_fields = []
             if trader == "Select Trader":
@@ -969,34 +1006,45 @@ with col_main:
                 else:
                     st.markdown('<span style="background-color: #f3f4f6; color: #6b7280; padding: 4px 8px; border-radius: 12px; font-weight: 500; font-size: 0.75rem;">Unknown</span>', unsafe_allow_html=True)
             with cols[11]:
-                if st.button("🗑️", key=f"delete_{trade.get('id', i)}_{i}", help="Delete this trade", type="secondary"):
-                    # Delete from Google Sheets first
-                    if st.session_state.sheets_connected:
-                        try:
-                            success = delete_trade_from_sheets(trade['id'])
-                            st.session_state.trades = [t for t in st.session_state.trades if t.get('id') != trade.get('id')]
-                            
-                            if success:
-                                st.success("✅ Trade deleted and synced!")
-                                force_refresh_data()
-                            else:
-                                st.warning("⚠️ Trade deleted locally, but Google Sheets sync may have failed")
+                # Only show delete button for valid trades
+                trade_id = trade.get('id')
+                if trade_id and trade.get('trader') and trade.get('instrument'):
+                    if st.button("🗑️", key=f"delete_{trade_id}_{i}", help="Delete this trade", type="secondary"):
+                        # Delete from Google Sheets first
+                        if st.session_state.sheets_connected:
+                            try:
+                                success = delete_trade_from_sheets(trade_id)
+                                # Remove from session state
+                                st.session_state.trades = [t for t in st.session_state.trades if t.get('id') != trade_id]
                                 
+                                if success:
+                                    st.success("✅ Trade deleted and synced!")
+                                    force_refresh_data()
+                                else:
+                                    st.warning("⚠️ Trade deleted locally, but Google Sheets sync may have failed")
+                                    
+                                st.rerun()
+                                
+                            except Exception as e:
+                                st.session_state.trades = [t for t in st.session_state.trades if t.get('id') != trade_id]
+                                error_msg = str(e)
+                                if "Response [200]" in error_msg:
+                                    st.success("✅ Trade deleted and synced successfully!")
+                                    force_refresh_data()
+                                else:
+                                    st.warning(f"⚠️ Trade deleted locally, sync error: {error_msg}")
+                                st.rerun()
+                        else:
+                            st.session_state.trades = [t for t in st.session_state.trades if t.get('id') != trade_id]
+                            st.warning("⚠️ Trade deleted locally only (Google Sheets not connected)")
                             st.rerun()
-                            
-                        except Exception as e:
-                            st.session_state.trades = [t for t in st.session_state.trades if t.get('id') != trade.get('id')]
-                            error_msg = str(e)
-                            if "Response [200]" in error_msg:
-                                st.success("✅ Trade deleted and synced successfully!")
-                                force_refresh_data()
-                            else:
-                                st.warning(f"⚠️ Trade deleted locally, sync error: {error_msg}")
+                else:
+                    # For invalid/empty trades, show a cleanup button
+                    if st.button("🧹", key=f"cleanup_{i}", help="Remove empty trade", type="secondary"):
+                        if trade in st.session_state.trades:
+                            st.session_state.trades.remove(trade)
+                            st.success("Empty trade removed!")
                             st.rerun()
-                    else:
-                        st.session_state.trades = [t for t in st.session_state.trades if t.get('id') != trade.get('id')]
-                        st.warning("⚠️ Trade deleted locally only (Google Sheets not connected)")
-                        st.rerun()
 
 with col_sidebar:
     # Performance Metrics
