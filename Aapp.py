@@ -627,10 +627,6 @@ with col_main:
         # Create columns for each trade row (sort by ID descending to show newest first)
         sorted_trades = sorted(st.session_state.trades, key=lambda x: x.get('id', 0), reverse=True)
         
-        # Use a more stable approach to prevent button glitches
-        if 'delete_confirmations' not in st.session_state:
-            st.session_state.delete_confirmations = set()
-            
         for idx, trade in enumerate(sorted_trades):
             cols = st.columns([1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.2, 1.2, 1.2, 1.8, 1.5, 1])
             
@@ -663,23 +659,28 @@ with col_main:
                     st.markdown('<span style="background-color: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 12px; font-weight: 500; font-size: 0.75rem;">Win</span>', unsafe_allow_html=True)
                 elif result == 'Loss':
                     st.markdown('<span style="background-color: #fee2e2; color: #dc2626; padding: 4px 8px; border-radius: 12px; font-weight: 500; font-size: 0.75rem;">Loss</span>', unsafe_allow_html=True)
+                else:
+                    st.markdown('<span style="background-color: #f3f4f6; color: #6b7280; padding: 4px 8px; border-radius: 12px; font-weight: 500; font-size: 0.75rem;">Unknown</span>', unsafe_allow_html=True)
             with cols[11]:
                 trade_id = trade.get('id')
-                stable_key = f"del_{trade_id}_{hash(str(trade))}"
-                
-                if st.button("🗑️", key=stable_key, help="Delete this trade", type="secondary"):
-                    # Immediate removal from session state
-                    st.session_state.trades = [t for t in st.session_state.trades if t.get('id') != trade_id]
+                if trade_id:
+                    # Use a simple, unique key based on position and ID
+                    unique_key = f"delete_btn_{idx}_{trade_id}"
                     
-                    # Background Google Sheets sync
-                    if st.session_state.sheets_connected:
-                        try:
-                            delete_trade_from_sheets(trade_id)
-                            st.session_state.last_data_hash = hash(str(st.session_state.trades))
-                        except:
-                            pass
-                    
-                    st.rerun()
+                    if st.button("🗑️", key=unique_key, help="Delete this trade", type="secondary"):
+                        # Immediate removal from session state
+                        st.session_state.trades = [t for t in st.session_state.trades if t.get('id') != trade_id]
+                        
+                        # Background Google Sheets sync
+                        if st.session_state.sheets_connected:
+                            try:
+                                delete_trade_from_sheets(trade_id)
+                                st.session_state.last_data_hash = hash(str(st.session_state.trades))
+                            except:
+                                pass
+                        
+                        st.success("✅ Trade deleted!")
+                        st.rerun()
 
 with col_sidebar:
     # Performance Metrics
