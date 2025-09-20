@@ -1,4 +1,24 @@
-# Create dynamic donut chart based on current data
+with col_sidebar:
+    # Performance Metrics
+    st.markdown("""
+    <div style="background: white; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem;">
+        <div style="background-color: #334155; color: white; padding: 0.75rem 1rem; border-radius: 0.5rem 0.5rem 0 0; display: flex; align-items: center;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.5rem;">
+                <path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path>
+                <path d="M22 12A10 10 0 0 0 12 2v10z"></path>
+            </svg>
+            <h3 style="font-weight: 600; margin: 0; font-size: 1rem;">Performance Metrics</h3>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("""
+    <div style="background-color: #475569; color: white; padding: 0.75rem; font-size: 0.875rem; font-weight: 500; margin: -1.5rem -1rem 0 -1rem;">
+        Overall Win Rate Distribution
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Create dynamic donut chart based on current data
     if rankings and len(rankings) > 0:
         labels = [r['name'] for r in rankings[:3]]  # Top 3 traders
         values = [r['win_rate'] for r in rankings[:3]]
