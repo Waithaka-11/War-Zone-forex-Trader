@@ -9,6 +9,8 @@ import os
 from google.oauth2.service_account import Credentials
 import gspread
 import time
+import requests
+from streamlit_autorefresh import st_autorefresh
 
 # Google Sheets Configuration
 SHEET_NAME = "Forex Trading Analytics"
@@ -241,6 +243,106 @@ def auto_refresh_trades():
                 st.rerun()
         except:
             pass
+def normalize_symbol(pair: str) -> str:
+    """Convert pair formats (EURUSD or BTCUSD) => 'EUR/USD' or 'BTC/USD'"""
+    pair = pair.strip().upper()
+    if "/" in pair:
+        return pair
+    if len(pair) >= 6:
+        return f"{pair[:3]}/{pair[3:]}"
+    return pair
+
+def get_live_price(pair: str) -> float:
+    """Get live price from Twelve Data API"""
+    symbol = normalize_symbol(pair)
+    
+    try:
+        api_key = st.secrets.get("twelvedata", {}).get("api_key")
+    except:
+        return None
+    
+    if not api_key:
+        return None
+
+    url = "https://api.twelvedata.com/price"
+    try:
+        resp = requests.get(
+            url, 
+            params={"symbol": symbol, "apikey": api_key}, 
+            timeout=10
+        )
+        data = resp.json()
+        
+        if "price" in data:
+            return float(data["price"])
+        return None
+    except:
+        return None
+
+def check_and_update_trades():
+    """Check live prices and update trade outcomes"""
+    if not st.session_state.trades:
+        return 0
+    
+    updates_made = 0
+    
+    for trade in st.session_state.trades:
+        # Skip already closed trades
+        if trade.get("outcome") in ("Target Hit", "SL Hit"):
+            continue
+        
+        symbol = trade.get("instrument", "")
+        if not symbol:
+            continue
+        
+        # Get live price
+        live_price = get_live_price(symbol)
+        if live_price is None:
+            continue
+        
+        # Get trade parameters
+        entry_price = float(trade.get("entry", 0))
+        sl_price = float(trade.get("sl", 0))
+        target_price = float(trade.get("target", 0))
+        
+        if entry_price == 0 or (sl_price == 0 and target_price == 0):
+            continue
+        
+        # Determine trade direction and check for hits
+        is_long_trade = target_price > entry_price
+        trade_updated = False
+        
+        if is_long_trade:
+            # Long trade
+            if target_price > 0 and live_price >= target_price:
+                trade["outcome"] = "Target Hit"
+                trade["result"] = "Win"
+                trade_updated = True
+            elif sl_price > 0 and live_price <= sl_price:
+                trade["outcome"] = "SL Hit"
+                trade["result"] = "Loss"
+                trade_updated = True
+        else:
+            # Short trade
+            if target_price > 0 and live_price <= target_price:
+                trade["outcome"] = "Target Hit"
+                trade["result"] = "Win"
+                trade_updated = True
+            elif sl_price > 0 and live_price >= sl_price:
+                trade["outcome"] = "SL Hit"
+                trade["result"] = "Loss"
+                trade_updated = True
+        
+        if trade_updated:
+            updates_made += 1
+            # Try to save to sheets if connected
+            if st.session_state.sheets_connected:
+                try:
+                    save_trade_to_sheets(trade)
+                except:
+                    pass
+    
+    return updates_made
 
 # Page configuration
 st.set_page_config(
@@ -464,6 +566,94 @@ with refresh_col2:
                     </span>
                 </div>
                 """, unsafe_allow_html=True)
+
+st.markdown("---")
+# === ADD THIS UI SECTION ===
+# Find this line in your existing code: st.markdown("---")
+# Right AFTER that line, add this entire section:
+
+# Live Price Monitoring
+st.markdown("### 📊 Live Price Monitor")
+
+monitor_col1, monitor_col2, monitor_col3 = st.columns([1, 1, 1])
+
+with monitor_col1:
+    try:
+        api_key_available = bool(st.secrets.get("twelvedata", {}).get("api_key"))
+    except:
+        api_key_available = False
+    
+    if api_key_available:
+        if st.button("🔍 Check Live Prices", type="secondary", use_container_width=True):
+            with st.spinner("Checking market prices..."):
+                updates = check_and_update_trades()
+                if updates > 0:
+                    st.success(f"✅ Updated {updates} trade(s)!")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.info("ℹ️ No trades updated")
+    else:
+        st.button("🔑 API Key Required", disabled=True, use_container_width=True)
+        with st.expander("Setup Instructions"):
+            st.markdown("""
+            **To enable live price monitoring:**
+            1. Sign up at [twelvedata.com](https://twelvedata.com) 
+            2. Get your free API key
+            3. Add to Streamlit secrets:
+            ```toml
+            [twelvedata]
+            api_key = "your_key_here"
+            ```
+            """)
+
+with monitor_col2:
+    if api_key_available:
+        auto_monitor = st.checkbox("🔄 Auto-monitor trades")
+        if auto_monitor:
+            check_interval = st.selectbox("Check every:", [15, 30, 60, 120], format_func=lambda x: f"{x} seconds")
+            
+            # Initialize session state for auto-refresh counter
+            if 'auto_refresh_count' not in st.session_state:
+                st.session_state.auto_refresh_count = 0
+            
+            # Auto-refresh component
+            count = st_autorefresh(
+                interval=check_interval * 1000, 
+                key="live_monitor",
+                limit=None
+            )
+            
+            # Perform automatic check
+            if count > 0:
+                updates = check_and_update_trades()
+                if updates > 0:
+                    st.success(f"🔔 Auto-updated {updates} trade(s)!")
+                    st.session_state.auto_refresh_count += updates
+
+with monitor_col3:
+    # Show monitoring status
+    open_trades = [t for t in st.session_state.trades if t.get("outcome", "") not in ("Target Hit", "SL Hit")]
+    total_open = len(open_trades)
+    
+    st.metric("📈 Open Trades", total_open)
+    
+    if total_open > 0 and api_key_available:
+        unique_instruments = len(set(t.get('instrument', '') for t in open_trades))
+        unique_traders = len(set(t.get('trader', '') for t in open_trades))
+        
+        st.markdown(f"""
+        <div style="font-size: 0.8rem; color: #666; text-align: center; margin-top: 0.5rem;">
+            📊 {unique_instruments} instruments<br>
+            👥 {unique_traders} traders
+        </div>
+        """, unsafe_allow_html=True)
+    elif total_open == 0:
+        st.markdown("""
+        <div style="font-size: 0.8rem; color: #999; text-align: center; margin-top: 0.5rem;">
+            All trades closed
+        </div>
+        """, unsafe_allow_html=True)
 
 st.markdown("---")
 
@@ -882,3 +1072,4 @@ with col_sidebar:
 
 # Close the main content div
 st.markdown('</div>', unsafe_allow_html=True)
+
