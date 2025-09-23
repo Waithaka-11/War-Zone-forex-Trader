@@ -64,7 +64,27 @@ st.markdown("""
 
 # Load data
 trades_data = load_trades_data()
-df = pd.DataFrame(trades_data)
+
+# DATA CLEANING: Fix instrument names in the loaded data
+cleaned_trades = []
+for trade in trades_data:
+    # Create a copy to avoid modifying the original
+    cleaned_trade = trade.copy()
+    
+    # Fix USTECH to US30
+    if cleaned_trade.get('instrument', '').upper() == 'USTECH':
+        cleaned_trade['instrument'] = 'US30'
+    
+    # Fix other instrument names if needed
+    instrument = cleaned_trade.get('instrument', '').upper()
+    if instrument == 'NAS100':
+        cleaned_trade['instrument'] = 'NAS100'
+    elif instrument == 'SPX500':
+        cleaned_trade['instrument'] = 'SPX500'
+    
+    cleaned_trades.append(cleaned_trade)
+
+df = pd.DataFrame(cleaned_trades)
 
 # Convert date column
 df['date'] = pd.to_datetime(df['date'])
