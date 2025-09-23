@@ -998,6 +998,23 @@ else:
 
 st.markdown("</div>", unsafe_allow_html=True)
 
+# Navigation Section - ADD THIS NEW SECTION
+st.markdown("---")
+st.markdown("### 🚀 Quick Navigation")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    if st.button("👤 Trader Analysis", use_container_width=True):
+        st.switch_page("pages/Trader Analysis.py")
+
+with col2:
+    if st.button("📊 Pair Analysis", use_container_width=True):
+        st.switch_page("pages/Pair Analysis.py")
+
+# Footer
+st.markdown("---")
+
 # Footer
 st.markdown("---")
 st.markdown("""
@@ -1006,5 +1023,6 @@ st.markdown("""
     Real-time monitoring • Risk management • Performance tracking
 </div>
 """, unsafe_allow_html=True)
+
 
 
