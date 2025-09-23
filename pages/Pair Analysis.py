@@ -177,16 +177,37 @@ else:
     
     comparison_df = pd.DataFrame(trader_stats)
     
-    # Display comparison table
+    # Display comparison table - FIXED: Remove problematic styling
     if not comparison_df.empty:
-        # Style the dataframe
-        styled_df = comparison_df.style.format({
-            'Win Rate %': '{:.1f}%',
-            'Avg R:R Ratio': '{:.2f}',
-            'Total P&L': '{:.2f}'
-        }).background_gradient(subset=['Win Rate %'], cmap='RdYlGn')
+        # Simple display without styling that requires matplotlib
+        st.dataframe(comparison_df, use_container_width=True)
         
-        st.dataframe(styled_df, use_container_width=True)
+        # Add visual indicators using HTML/CSS instead
+        st.markdown("#### 📊 Performance Summary")
+        for _, trader in comparison_df.iterrows():
+            win_rate = trader['Win Rate %']
+            win_color = "#10b981" if win_rate >= 50 else "#ef4444"
+            pnl_color = "#10b981" if trader['Total P&L'] >= 0 else "#ef4444"
+            
+            st.markdown(f"""
+            <div class="trader-comparison">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <strong>{trader['Trader']}</strong>
+                        <div style="font-size: 0.9rem; color: #666;">
+                            {trader['Total Trades']} trades • {trader['Closed Trades']} closed
+                        </div>
+                    </div>
+                    <div style="text-align: right;">
+                        <strong style="color: {win_color};">Win Rate: {win_rate:.1f}%</strong>
+                        <div style="color: {pnl_color};">P&L: {trader['Total P&L']:+.2f}</div>
+                    </div>
+                </div>
+                <div style="background: #e2e8f0; border-radius: 10px; height: 8px; margin-top: 0.5rem;">
+                    <div style="background: {win_color}; width: {min(win_rate, 100)}%; height: 100%; border-radius: 10px;"></div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
     else:
         st.info("No data available for comparison")
 
