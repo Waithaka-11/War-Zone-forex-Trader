@@ -878,12 +878,15 @@ if st.session_state.trades:
         if trade['outcome'] == 'Target Hit':
             border_color = "#10b981"  # Green
             status_emoji = "✅"
+            show_buttons = False
         elif trade['outcome'] == 'SL Hit':
             border_color = "#ef4444"  # Red
             status_emoji = "❌"
+            show_buttons = False
         else:
             border_color = "#3b82f6"  # Blue
             status_emoji = "⏳"
+            show_buttons = True  # Only show buttons for open trades
         
         st.markdown(f"""
         <div class="trade-card" style="border-left: 4px solid {border_color};">
@@ -925,9 +928,67 @@ if st.session_state.trades:
                         {trade['outcome']}
                     </div>
                 </div>
+                
+                {/* ADD THIS BUTTONS SECTION */}
+                {show_buttons and f"""
+                <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #e2e8f0;">
+                    <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+                        <button style="background-color: #ef4444; color: white; border: none; padding: 0.5rem 1rem; 
+                                    border-radius: 0.375rem; cursor: pointer; font-size: 0.875rem;"
+                                onclick="closeTrade({trade['id']})">
+                            ❌ Close Trade
+                        </button>
+                        <button style="background-color: #f59e0b; color: white; border: none; padding: 0.5rem 1rem; 
+                                    border-radius: 0.375rem; cursor: pointer; font-size: 0.875rem;"
+                                onclick="adjustTrade({trade['id']})">
+                            ⚙️ Adjust SL/TP
+                        </button>
+                    </div>
+                </div>
+                """ or ""}
             </div>
         </div>
         """, unsafe_allow_html=True)
+        
+        # Add the actual Streamlit buttons (hidden but functional)
+        if show_buttons:
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button(f"❌ Close Trade #{trade['id']}", key=f"close_{trade['id']}", use_container_width=True):
+                    # Close trade logic
+                    if close_trade(trade['id']):
+                        st.success(f"Trade #{trade['id']} closed successfully!")
+                        st.rerun()
+                    else:
+                        st.error("Failed to close trade")
+            
+            with col2:
+                if st.button(f"⚙️ Adjust SL/TP #{trade['id']}", key=f"adjust_{trade['id']}", use_container_width=True):
+                    # Show adjustment form
+                    st.session_state[f"adjusting_trade_{trade['id']}"] = True
+            
+            # Adjustment form
+            if st.session_state.get(f"adjusting_trade_{trade['id']}"):
+                with st.expander(f"Adjust SL/TP for Trade #{trade['id']}", expanded=True):
+                    adj_col1, adj_col2 = st.columns(2)
+                    with adj_col1:
+                        new_sl = st.number_input("New Stop Loss", value=float(trade['sl']), key=f"sl_{trade['id']}")
+                    with adj_col2:
+                        new_tp = st.number_input("New Take Profit", value=float(trade['target']), key=f"tp_{trade['id']}")
+                    
+                    adj_col3, adj_col4 = st.columns(2)
+                    with adj_col3:
+                        if st.button("✅ Apply Changes", key=f"apply_{trade['id']}"):
+                            if adjust_trade_sl_tp(trade['id'], new_sl, new_tp):
+                                st.success("SL/TP adjusted successfully!")
+                                st.session_state[f"adjusting_trade_{trade['id']}"] = False
+                                st.rerun()
+                            else:
+                                st.error("Failed to adjust SL/TP")
+                    with adj_col4:
+                        if st.button("❌ Cancel", key=f"cancel_{trade['id']}"):
+                            st.session_state[f"adjusting_trade_{trade['id']}"] = False
+                            st.rerun()
 else:
     st.info("No trades recorded yet. Add your first trade setup above!")
 
@@ -1044,6 +1105,7 @@ st.markdown("""
     Real-time monitoring • Risk management • Performance tracking
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
