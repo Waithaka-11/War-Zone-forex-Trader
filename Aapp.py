@@ -718,7 +718,6 @@ with col1:
     trader = st.selectbox("", ["Select Trader", "Waithaka", "Wallace", "Max"], key="trader_select", label_visibility="collapsed")
 
 with col2:
-    swith col2:
     st.markdown('<div class="form-group"><label>Instrument</label></div>', unsafe_allow_html=True)
     instrument = st.selectbox("", ["Select Instrument", "XAUUSD", "EURUSD", "GBPUSD", "USDJPY", "USOIL", "BTCUSD", "US30", "NAS100", "SPX500"], key="instrument_select", label_visibility="collapsed")
 
@@ -1007,4 +1006,5 @@ st.markdown("""
     Real-time monitoring • Risk management • Performance tracking
 </div>
 """, unsafe_allow_html=True)
+
 
