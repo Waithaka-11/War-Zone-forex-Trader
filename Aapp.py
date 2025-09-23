@@ -37,7 +37,7 @@ def init_connection():
     except Exception as e:
         return None
 
-@st.cache_data(ttl=CACHE_TTL, show_spinner=False)  # Longer cache with no spinner
+@st.cache_data(ttl=CACHE_TTL, show_spinner=False)
 def load_trades_from_sheets():
     """Load trades from Google Sheets with optimized caching"""
     try:
@@ -53,7 +53,22 @@ def load_trades_from_sheets():
         if not all_values or len(all_values) < 2:
             return load_fallback_data()
         
-        # Process data efficiently
+        # === ADD THIS NEW DATA CLEANING SECTION ===
+        # DATA CLEANING: Fix instrument names
+        for i, row in enumerate(all_values):
+            if len(row) > 3:  # Make sure instrument column exists
+                instrument = str(row[3]).strip().upper()
+                # Fix USTECH to US30 for Wallace
+                if instrument == 'USTECH':
+                    all_values[i][3] = 'US30'
+                # Fix other common typos if needed
+                elif instrument == 'NAS100':
+                    all_values[i][3] = 'NAS100'
+                elif instrument == 'SPX500':
+                    all_values[i][3] = 'SPX500'
+        # === END OF NEW SECTION ===
+        
+        # Continue with existing processing code...
         processed_records = []
         for i, row in enumerate(all_values[1:], 1):  # Skip headers
             if not any(str(cell).strip() for cell in row):
@@ -719,8 +734,14 @@ with col1:
 
 with col2:
     st.markdown('<div class="form-group"><label>Instrument</label></div>', unsafe_allow_html=True)
-    instrument = st.selectbox("", ["Select Instrument", "XAUUSD", "EURUSD", "GBPUSD", "USDJPY", "USOIL", "BTCUSD", "US30", "NAS100", "SPX500"], key="instrument_select", label_visibility="collapsed")
-
+    instrument = st.selectbox("", [
+        "Select Instrument", 
+        "XAUUSD", "EURUSD", "GBPUSD", "USDJPY", "USDCHF", "USDCAD", "AUDUSD", "NZDUSD",
+        "EURGBP", "EURJPY", "GBPJPY", "EURCHF", "AUDJPY", "CADJPY",
+        "USOIL", "BTCUSD", "ETHUSD", "XRPUSD", "ADAUSD",
+        "US30", "NAS100", "SPX500", "FTSE100", "DAX30",
+        "NGAS", "COPPER", "SILVER", "XAGUSD", "USTECH"
+    ], key="instrument_select", label_visibility="collapsed")
 with col3:
     st.markdown('<div class="form-group"><label>Entry Price</label></div>', unsafe_allow_html=True)
     entry_price = st.number_input("", min_value=0.0, format="%.5f", key="entry_input", label_visibility="collapsed")
@@ -1023,6 +1044,7 @@ st.markdown("""
     Real-time monitoring • Risk management • Performance tracking
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
