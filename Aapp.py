@@ -199,7 +199,8 @@ def load_fallback_data():
         { 'id': 1, 'date': '2023-10-08', 'trader': 'Waithaka', 'instrument': 'XAUUSD', 'entry': 1820.50, 'sl': 1815.00, 'target': 1830.00, 'risk': 5.50, 'reward': 9.50, 'rrRatio': 1.73, 'outcome': 'Target Hit', 'result': 'Win' },
         { 'id': 2, 'date': '2023-10-07', 'trader': 'Wallace', 'instrument': 'USOIL', 'entry': 89.30, 'sl': 88.50, 'target': 91.00, 'risk': 0.80, 'reward': 1.70, 'rrRatio': 2.13, 'outcome': 'SL Hit', 'result': 'Loss' },
         { 'id': 3, 'date': '2023-10-06', 'trader': 'Max', 'instrument': 'BTCUSD', 'entry': 27450.00, 'sl': 27200.00, 'target': 27800.00, 'risk': 250.00, 'reward': 350.00, 'rrRatio': 1.40, 'outcome': 'Target Hit', 'result': 'Win' },
-        { 'id': 4, 'date': '2023-10-05', 'trader': 'Waithaka', 'instrument': 'EURUSD', 'entry': 1.06250, 'sl': 1.06000, 'target': 1.06700, 'risk': 0.00250, 'reward': 0.00450, 'rrRatio': 1.80, 'outcome': 'Target Hit', 'result': 'Win' }
+        { 'id': 4, 'date': '2023-10-05', 'trader': 'Waithaka', 'instrument': 'EURUSD', 'entry': 1.06250, 'sl': 1.06000, 'target': 1.06700, 'risk': 0.00250, 'reward': 0.00450, 'rrRatio': 1.80, 'outcome': 'Target Hit', 'result': 'Win' },
+        { 'id': 5, 'date': '2023-10-04', 'trader': 'Wallace', 'instrument': 'US30', 'entry': 34500.00, 'sl': 34200.00, 'target': 34900.00, 'risk': 300.00, 'reward': 400.00, 'rrRatio': 1.33, 'outcome': 'Target Hit', 'result': 'Win' }
     ]
 
 # Real-time update functions
@@ -385,6 +386,10 @@ st.markdown("""
 # Initialize session state with optimized data loading
 if 'trades' not in st.session_state:
     st.session_state.trades = load_trades_from_sheets()
+    # Update any existing USTECH trades for Wallace to US30
+    for trade in st.session_state.trades:
+        if trade.get('trader') == 'Wallace' and trade.get('instrument') == 'USTECH':
+            trade['instrument'] = 'US30'
     st.session_state.last_data_hash = hash(str(st.session_state.trades))
     
 if 'sheets_connected' not in st.session_state:
@@ -491,8 +496,17 @@ with col1:
 
 with col2:
     st.markdown('<div class="form-group"><label>Instrument</label></div>', unsafe_allow_html=True)
-    instrument_pairs = ['Select Instrument', 'XAUUSD', 'USDOIL', 'BTCUSD', 'USTECH', 'EURUSD', 'GBPUSD', 'AUDUSD', 'USDJPY', 'USDCAD', 'NZDUSD']
-    instrument = st.selectbox("", instrument_pairs, key="instrument_select", label_visibility="collapsed")
+    # Updated instrument pairs with new additions and option for custom input
+    predefined_pairs = ['XAUUSD', 'USOIL', 'BTCUSD', 'US30', 'US100', 'US500', 'USTECH', 'XRPUSD', 'EURUSD', 'GBPUSD', 'AUDUSD', 'USDJPY', 'USDCAD', 'NZDUSD']
+    
+    instrument_option = st.selectbox("", ["Select from list", "Enter custom pair"], key="instrument_option", label_visibility="collapsed")
+    
+    if instrument_option == "Select from list":
+        instrument = st.selectbox("", ["Select Instrument"] + predefined_pairs, key="instrument_select", label_visibility="collapsed")
+    else:
+        instrument = st.text_input("", placeholder="Enter trading pair (e.g., GBPJPY)", key="custom_instrument", label_visibility="collapsed")
+        if not instrument:
+            instrument = "Select Instrument"
 
 with col3:
     st.markdown('<div class="form-group"><label>Date</label></div>', unsafe_allow_html=True)
@@ -520,7 +534,7 @@ with col7:
 with col8:
     st.markdown('<div style="padding-top: 1.5rem;"></div>', unsafe_allow_html=True)
     if st.button("➕ Add Trade", type="primary", use_container_width=True):
-        if trader != "Select Trader" and instrument != "Select Instrument" and outcome != "Select Outcome" and entry and sl and target:
+        if trader != "Select Trader" and instrument != "Select Instrument" and instrument.strip() != "" and outcome != "Select Outcome" and entry and sl and target:
             risk = abs(entry - sl)
             reward = abs(target - entry)
             rr_ratio = reward / risk if risk != 0 else 0
@@ -533,7 +547,7 @@ with col8:
                 'id': max_id + 1,
                 'date': trade_date.strftime('%Y-%m-%d'),
                 'trader': trader,
-                'instrument': instrument,
+                'instrument': instrument.strip().upper(),  # Ensure uppercase
                 'entry': entry,
                 'sl': sl,
                 'target': target,
@@ -566,7 +580,7 @@ with col8:
             missing_fields = []
             if trader == "Select Trader":
                 missing_fields.append("Trader")
-            if instrument == "Select Instrument":
+            if instrument == "Select Instrument" or instrument.strip() == "":
                 missing_fields.append("Instrument")
             if outcome == "Select Outcome":
                 missing_fields.append("Outcome")
@@ -652,281 +666,4 @@ with col_main:
     
     # Trading History
     st.markdown("""
-    <div style="background: white; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem;">
-        <div style="background-color: #334155; color: white; padding: 0.75rem 1rem; border-radius: 0.5rem 0.5rem 0 0; display: flex; align-items: center;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.5rem;">
-                <path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h4"></path>
-            </svg>
-            <h3 style="font-weight: 600; margin: 0; font-size: 1rem;">Trading History</h3>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Display trades with individual delete buttons
-    if not st.session_state.trades or len(st.session_state.trades) == 0:
-        st.info("No trades recorded yet. Add a trade using the form above.")
-    else:
-        # Header row
-        header_cols = st.columns([1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.2, 1.2, 1.2, 1.8, 1.5, 1])
-        headers = ['Date', 'Trader', 'Instrument', 'Entry', 'SL', 'Target', 'Risk', 'Reward', 'R/R Ratio', 'Outcome', 'Result', 'Actions']
-        
-        for i, header in enumerate(headers):
-            with header_cols[i]:
-                st.markdown(f'<div style="font-weight: bold; color: #000000; padding: 0.5rem 0; border-bottom: 2px solid #e5e7eb; font-size: 0.875rem;">{header}</div>', unsafe_allow_html=True)
-        
-        # Create columns for each trade row (sort by ID descending to show newest first)
-        sorted_trades = sorted(st.session_state.trades, key=lambda x: x.get('id', 0), reverse=True)
-        
-        for idx, trade in enumerate(sorted_trades):
-            cols = st.columns([1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.2, 1.2, 1.2, 1.8, 1.5, 1])
-            
-            with cols[0]:
-                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0; font-size: 0.875rem;">{trade.get("date", "N/A")}</div>', unsafe_allow_html=True)
-            with cols[1]:
-                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0; font-size: 0.875rem;">{trade.get("trader", "N/A")}</div>', unsafe_allow_html=True)
-            with cols[2]:
-                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0; font-size: 0.875rem;">{trade.get("instrument", "N/A")}</div>', unsafe_allow_html=True)
-            with cols[3]:
-                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0; font-size: 0.875rem;">{trade.get("entry", 0)}</div>', unsafe_allow_html=True)
-            with cols[4]:
-                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0; font-size: 0.875rem;">{trade.get("sl", 0)}</div>', unsafe_allow_html=True)
-            with cols[5]:
-                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0; font-size: 0.875rem;">{trade.get("target", 0)}</div>', unsafe_allow_html=True)
-            with cols[6]:
-                risk_val = trade.get("risk", 0)
-                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0; font-size: 0.875rem;">{risk_val:.4f}</div>', unsafe_allow_html=True)
-            with cols[7]:
-                reward_val = trade.get("reward", 0)
-                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0; font-size: 0.875rem;">{reward_val:.4f}</div>', unsafe_allow_html=True)
-            with cols[8]:
-                rr_val = trade.get("rrRatio", 0)
-                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0; font-size: 0.875rem;">{rr_val}</div>', unsafe_allow_html=True)
-            with cols[9]:
-                st.markdown(f'<div style="color: #000000; padding: 0.25rem 0; font-size: 0.875rem;">{trade.get("outcome", "N/A")}</div>', unsafe_allow_html=True)
-            with cols[10]:
-                result = trade.get('result', 'Unknown')
-                if result == 'Win':
-                    st.markdown('<span style="background-color: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 12px; font-weight: 500; font-size: 0.75rem;">Win</span>', unsafe_allow_html=True)
-                elif result == 'Loss':
-                    st.markdown('<span style="background-color: #fee2e2; color: #dc2626; padding: 4px 8px; border-radius: 12px; font-weight: 500; font-size: 0.75rem;">Loss</span>', unsafe_allow_html=True)
-                else:
-                    st.markdown('<span style="background-color: #f3f4f6; color: #6b7280; padding: 4px 8px; border-radius: 12px; font-weight: 500; font-size: 0.75rem;">Unknown</span>', unsafe_allow_html=True)
-            with cols[11]:
-                trade_id = trade.get('id')
-                if trade_id:
-                    # Use a simple, unique key based on position and ID
-                    unique_key = f"delete_btn_{idx}_{trade_id}"
-                    
-                    if st.button("🗑️", key=unique_key, help="Delete this trade", type="secondary"):
-                        # Immediate removal from session state
-                        st.session_state.trades = [t for t in st.session_state.trades if t.get('id') != trade_id]
-                        
-                        # Background Google Sheets sync
-                        if st.session_state.sheets_connected:
-                            try:
-                                delete_trade_from_sheets(trade_id)
-                                st.session_state.last_data_hash = hash(str(st.session_state.trades))
-                            except:
-                                pass
-                        
-                        st.success("✅ Trade deleted!")
-                        st.rerun()
-
-with col_sidebar:
-    # Performance Metrics
-    st.markdown("""
-    <div style="background: white; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem;">
-        <div style="background-color: #334155; color: white; padding: 0.75rem 1rem; border-radius: 0.5rem 0.5rem 0 0; display: flex; align-items: center;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.5rem;">
-                <path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path>
-                <path d="M22 12A10 10 0 0 0 12 2v10z"></path>
-            </svg>
-            <h3 style="font-weight: 600; margin: 0; font-size: 1rem;">Performance Metrics</h3>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("""
-    <div style="background-color: #475569; color: white; padding: 0.75rem; font-size: 0.875rem; font-weight: 500; margin: -1.5rem -1rem 0 -1rem;">
-        Overall Win Rate Distribution
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Create dynamic donut chart based on current data
-    if rankings and len(rankings) > 0:
-        labels = [r['name'] for r in rankings[:3]]
-        values = [r['win_rate'] for r in rankings[:3]]
-        colors = ['#fb923c', '#3b82f6', '#9ca3af']
-        
-        avg_win_rate = sum(values) / len(values) if values else 0
-        
-        fig_donut = go.Figure(data=[go.Pie(
-            labels=labels, 
-            values=values, 
-            hole=0.6,
-            marker=dict(colors=colors[:len(labels)], line=dict(color='#FFFFFF', width=2)),
-            textinfo='none',
-            hovertemplate='<b>%{label}</b><br>Win Rate: %{value}%<extra></extra>'
-        )])
-        
-        fig_donut.update_layout(
-            showlegend=False,
-            height=300,
-            margin=dict(t=20, b=20, l=20, r=20),
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
-            annotations=[
-                dict(
-                    text=f'<b>{avg_win_rate:.1f}%</b><br><span style="font-size:12px; color:#6b7280;">Avg Rate</span>', 
-                    x=0.5, y=0.5, 
-                    font_size=20, 
-                    showarrow=False,
-                    font_color='#374151'
-                )
-            ]
-        )
-        
-        st.plotly_chart(fig_donut, use_container_width=True)
-        
-        # Dynamic Legend
-        if len(rankings) >= 1:
-            legend_cols = st.columns(min(3, len(rankings)))
-            
-            for i, ranking in enumerate(rankings[:3]):
-                if i < len(legend_cols):
-                    with legend_cols[i]:
-                        color = colors[i] if i < len(colors) else '#6b7280'
-                        st.markdown(f"""
-                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
-                            <div style="display: flex; align-items: center;">
-                                <div style="width: 0.75rem; height: 0.75rem; background-color: {color}; border-radius: 0.125rem; margin-right: 0.5rem;"></div>
-                                <span style="font-size: 0.875rem; color: #000000;">{ranking['name']}</span>
-                            </div>
-                            <span style="font-weight: 600; font-size: 0.875rem; color: #000000;">{ranking['win_rate']}%</span>
-                        </div>
-                        """, unsafe_allow_html=True)
-    else:
-        st.info("No data available for performance metrics. Add some trades to see analytics!")
-    
-    # Trader of the Month
-    if rankings and len(rankings) > 0:
-        top_trader = rankings[0]
-        st.markdown(f"""
-        <div class="trade-card">
-            <div class="card-header">
-                <div style="display: flex; align-items: center;">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.5rem;">
-                        <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
-                        <path d="M14 9h1.5a2.5 2.5 0 0 0 0-5H14"></path>
-                        <path d="M6 9v12l6-3 6 3V9"></path>
-                    </svg>
-                    <h3 style="font-weight: 600; margin: 0;">Trader of the Month</h3>
-                </div>
-            </div>
-            <div style="text-align: center; padding: 1.5rem;">
-                <div style="font-size: 4rem; margin-bottom: 1rem;">🏆</div>
-                <h4 style="font-size: 1.25rem; font-weight: bold; color: #1f2937; margin: 0 0 0.5rem 0;">{top_trader['name']}</h4>
-                <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">Best performance with {top_trader['win_rate']}% win rate</p>
-                <div style="background-color: #dcfce7; border-radius: 0.5rem; padding: 1rem; margin-top: 1rem;">
-                    <div style="font-size: 0.75rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em;">WIN RATE THIS MONTH</div>
-                    <div style="font-size: 2rem; font-weight: bold; color: #15803d;">{top_trader['win_rate']}%</div>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.markdown("""
-        <div class="trade-card">
-            <div class="card-header">
-                <div style="display: flex; align-items: center;">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.5rem;">
-                        <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
-                        <path d="M14 9h1.5a2.5 2.5 0 0 0 0-5H14"></path>
-                        <path d="M6 9v12l6-3 6 3V9"></path>
-                    </svg>
-                    <h3 style="font-weight: 600; margin: 0;">Trader of the Month</h3>
-                </div>
-            </div>
-            <div style="text-align: center; padding: 1.5rem;">
-                <div style="font-size: 4rem; margin-bottom: 1rem; opacity: 0.5;">🏆</div>
-                <h4 style="font-size: 1.25rem; font-weight: bold; color: #6b7280; margin: 0 0 0.5rem 0;">No Data Yet</h4>
-                <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">Add trades to see top performer</p>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    # Instrument Performance
-    st.markdown("""
-    <div style="background: white; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem;">
-        <div style="background-color: #334155; color: white; padding: 0.75rem 1rem; border-radius: 0.5rem 0.5rem 0 0; display: flex; align-items: center;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 0.5rem;">
-                <line x1="12" y1="20" x2="12" y2="10"></line>
-                <line x1="18" y1="20" x2="18" y2="4"></line>
-                <line x1="6" y1="20" x2="6" y2="16"></line>
-            </svg>
-            <h3 style="font-weight: 600; margin: 0; font-size: 1rem;">Instrument Performance by Trader</h3>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Calculate dynamic instrument performance
-    if st.session_state.trades and len(st.session_state.trades) > 0:
-        instruments = list(set(trade.get('instrument', '') for trade in st.session_state.trades if trade.get('instrument')))
-        traders = list(set(trade.get('trader', '') for trade in st.session_state.trades if trade.get('trader')))
-        
-        if instruments and traders:
-            performance_data = {'Instrument': instruments}
-            
-            for trader in traders:
-                trader_performance = []
-                for instrument in instruments:
-                    trades = [t for t in st.session_state.trades 
-                             if t.get('trader') == trader and t.get('instrument') == instrument]
-                    if trades:
-                        wins = sum(1 for t in trades if t.get('result') == 'Win')
-                        win_rate = (wins / len(trades)) * 100
-                        trader_performance.append(f"{win_rate:.0f}%")
-                    else:
-                        trader_performance.append("-")
-                performance_data[trader] = trader_performance
-            
-            perf_df = pd.DataFrame(performance_data)
-            
-            def style_performance(val):
-                if val == '-':
-                    return 'background-color: #6b7280; color: white; text-align: center; font-weight: bold; padding: 8px; border-radius: 4px;'
-                elif val.replace('%', '').replace('-', '').isdigit():
-                    try:
-                        rate = int(val.replace('%', ''))
-                        if rate >= 70:
-                            return 'background-color: #10b981; color: white; text-align: center; font-weight: bold; padding: 8px; border-radius: 4px;'
-                        elif rate >= 50:
-                            return 'background-color: #f59e0b; color: white; text-align: center; font-weight: bold; padding: 8px; border-radius: 4px;'
-                        else:
-                            return 'background-color: #ef4444; color: white; text-align: center; font-weight: bold; padding: 8px; border-radius: 4px;'
-                    except:
-                        pass
-                return 'background-color: #f3f4f6; text-align: center; font-weight: 500; padding: 12px; color: #000000;'
-            
-            if len(traders) > 0:
-                styled_df = perf_df.style.applymap(style_performance, subset=traders)
-                styled_df = styled_df.applymap(lambda x: 'background-color: #f3f4f6; text-align: center; font-weight: 500; padding: 12px; color: #000000;', subset=['Instrument'])
-                
-                st.dataframe(styled_df, use_container_width=True, hide_index=True)
-            else:
-                st.info("No trader data available.")
-        else:
-            st.info("No complete trading data available.")
-    else:
-        st.info("No trades available for analysis. Add some trades to see detailed analytics!")
-
-st.markdown('</div>', unsafe_allow_html=True)
-
-# Footer
-current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-st.markdown(f"""
-<div style="text-align: center; padding: 2rem 0; color: #6b7280; font-size: 0.875rem; border-top: 1px solid #e5e7eb; margin-top: 2rem;">
-    <p>⚔️ The War Zone - Where Traders Rise or Fall</p>
-    <p>Last updated: {current_time}</p>
-</div>
-""", unsafe_allow_html=True)
+    <div style="background: white; border-radius: 0.5rem; box-shadow: 0 1
