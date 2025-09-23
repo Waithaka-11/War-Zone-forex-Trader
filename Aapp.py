@@ -6,9 +6,11 @@ from datetime import datetime, date
 import numpy as np
 import json
 import os
+import requests
+import time
 from google.oauth2.service_account import Credentials
 import gspread
-import time
+from streamlit_autorefresh import st_autorefresh
 
 # Google Sheets Configuration
 SHEET_NAME = "Forex Trading Analytics"
@@ -17,6 +19,167 @@ WORKSHEET_NAME = "Trades"
 # Real-time update configuration
 REAL_TIME_UPDATE_INTERVAL = 10  # Update every 10 seconds (reduced frequency)
 CACHE_TTL = 30  # Cache data for 30 seconds (longer cache)
+
+# Live price configuration
+PRICE_CHECK_INTERVAL = 15  # Check prices every 15 seconds to avoid API limits
+
+# --- LIVE PRICE INTEGRATION FUNCTIONS ---
+
+def normalize_symbol(pair: str) -> str:
+    """Convert pair formats (EURUSD or BTCUSD) => 'EUR/USD' or 'BTC/USD'"""
+    pair = pair.strip().upper()
+    if "/" in pair:
+        return pair
+    if len(pair) >= 6:
+        return f"{pair[:3]}/{pair[3:]}"
+    return pair
+
+@st.cache_data(ttl=60, show_spinner=False)  # Cache prices for 1 minute
+def get_live_price(pair: str) -> float:
+    """
+    Returns the latest price as float or None on failure.
+    Works for currency pairs (EURUSD -> EUR/USD) and cryptos (BTCUSD -> BTC/USD).
+    """
+    symbol = normalize_symbol(pair)
+    
+    # Try to get API key from secrets
+    try:
+        api_key = st.secrets.get("twelvedata", {}).get("api_key")
+    except:
+        api_key = None
+    
+    if not api_key:
+        # Return None silently - we'll show a warning in the UI
+        return None
+
+    url = "https://api.twelvedata.com/price"
+    try:
+        resp = requests.get(
+            url, 
+            params={"symbol": symbol, "apikey": api_key}, 
+            timeout=10
+        )
+        data = resp.json()
+        
+        # Successful response: {"price":"YYYY.YY"}
+        if "price" in data:
+            return float(data["price"])
+        else:
+            # Error response (rate limit, invalid symbol, etc.)
+            return None
+    except Exception as e:
+        # Network or JSON parse error
+        return None
+
+def update_trade_outcomes(trades: list, save_callback=None) -> tuple[list, int]:
+    """
+    Check each trade against live price and mark outcome if hit.
+    Returns (updated_trades, number_of_updates)
+    """
+    if not trades:
+        return trades, 0
+    
+    updates_made = 0
+    updated_trades = []
+    
+    for trade in trades:
+        # Only check open trades (no outcome yet or marked as open)
+        current_outcome = trade.get("outcome", "")
+        if current_outcome in ("Target Hit", "SL Hit"):
+            updated_trades.append(trade)
+            continue  # Already resolved
+        
+        symbol = trade.get("instrument", "")
+        if not symbol:
+            updated_trades.append(trade)
+            continue
+        
+        # Get live price
+        live_price = get_live_price(symbol)
+        if live_price is None:
+            updated_trades.append(trade)
+            continue  # Skip if cannot fetch price
+        
+        # Get trade parameters
+        entry_price = float(trade.get("entry", 0))
+        sl_price = float(trade.get("sl", 0))
+        target_price = float(trade.get("target", 0))
+        
+        if entry_price == 0 or (sl_price == 0 and target_price == 0):
+            updated_trades.append(trade)
+            continue
+        
+        # Create a copy of the trade for potential updates
+        updated_trade = trade.copy()
+        trade_updated = False
+        
+        # Determine if it's a long or short trade
+        is_long_trade = target_price > entry_price
+        
+        if is_long_trade:
+            # Long trade: price going up hits target, price going down hits SL
+            if target_price > 0 and live_price >= target_price:
+                updated_trade["outcome"] = "Target Hit"
+                updated_trade["result"] = "Win"
+                updated_trade["closed_price"] = live_price
+                updated_trade["closed_time"] = datetime.now().isoformat()
+                trade_updated = True
+            elif sl_price > 0 and live_price <= sl_price:
+                updated_trade["outcome"] = "SL Hit"
+                updated_trade["result"] = "Loss"
+                updated_trade["closed_price"] = live_price
+                updated_trade["closed_time"] = datetime.now().isoformat()
+                trade_updated = True
+        else:
+            # Short trade: price going down hits target, price going up hits SL
+            if target_price > 0 and live_price <= target_price:
+                updated_trade["outcome"] = "Target Hit"
+                updated_trade["result"] = "Win"
+                updated_trade["closed_price"] = live_price
+                updated_trade["closed_time"] = datetime.now().isoformat()
+                trade_updated = True
+            elif sl_price > 0 and live_price >= sl_price:
+                updated_trade["outcome"] = "SL Hit"
+                updated_trade["result"] = "Loss"
+                updated_trade["closed_price"] = live_price
+                updated_trade["closed_time"] = datetime.now().isoformat()
+                trade_updated = True
+        
+        if trade_updated:
+            updates_made += 1
+        
+        updated_trades.append(updated_trade)
+    
+    # Save if changes were made and callback provided
+    if updates_made > 0 and callable(save_callback):
+        try:
+            save_callback(updated_trades)
+        except Exception as e:
+            st.warning(f"Auto-save failed after updating outcomes: {e}")
+    
+    return updated_trades, updates_made
+
+def get_open_trades_summary(trades: list) -> dict:
+    """Get summary of open trades with live prices"""
+    open_trades = [t for t in trades if t.get("outcome", "") not in ("Target Hit", "SL Hit")]
+    
+    summary = {
+        "total_open": len(open_trades),
+        "instruments": set(),
+        "traders": set(),
+        "total_risk": 0.0,
+        "total_potential_reward": 0.0
+    }
+    
+    for trade in open_trades:
+        summary["instruments"].add(trade.get("instrument", ""))
+        summary["traders"].add(trade.get("trader", ""))
+        summary["total_risk"] += float(trade.get("risk", 0))
+        summary["total_potential_reward"] += float(trade.get("reward", 0))
+    
+    return summary
+
+# --- EXISTING FUNCTIONS (keep all your existing functions here) ---
 
 # Initialize Google Sheets connection
 @st.cache_resource
@@ -35,7 +198,7 @@ def init_connection():
     except Exception as e:
         return None
 
-@st.cache_data(ttl=CACHE_TTL, show_spinner=False)  # Longer cache with no spinner
+@st.cache_data(ttl=CACHE_TTL, show_spinner=False)
 def load_trades_from_sheets():
     """Load trades from Google Sheets with optimized caching"""
     try:
@@ -58,7 +221,7 @@ def load_trades_from_sheets():
                 continue
                 
             try:
-                while len(row) < 12:
+                while len(row) < 14:  # Extended to include closed_price and closed_time
                     row.append('')
                 
                 # Only process rows with complete valid data
@@ -90,7 +253,9 @@ def load_trades_from_sheets():
                             'reward': float(row[8]) if row[8] and str(row[8]).replace('.', '').replace('-', '').isdigit() else abs(target_val - entry_val),
                             'rrRatio': float(row[9]) if row[9] and str(row[9]).replace('.', '').replace('-', '').isdigit() else 0.0,
                             'outcome': str(row[10]).strip(),
-                            'result': str(row[11]).strip()
+                            'result': str(row[11]).strip(),
+                            'closed_price': float(row[12]) if row[12] and str(row[12]).replace('.', '').replace('-', '').isdigit() else None,
+                            'closed_time': str(row[13]).strip() if row[13] else None
                         }
                         processed_records.append(processed_record)
                     except (ValueError, TypeError):
@@ -114,12 +279,13 @@ def save_trade_to_sheets(trade_data):
         spreadsheet = gc.open(SHEET_NAME)
         sheet = spreadsheet.worksheet(WORKSHEET_NAME)
         
-        # Prepare row data efficiently
+        # Prepare row data efficiently (extended with closed_price and closed_time)
         row_data = [
             str(trade_data['id']), str(trade_data['date']), str(trade_data['trader']),
             str(trade_data['instrument']), float(trade_data['entry']), float(trade_data['sl']),
             float(trade_data['target']), float(trade_data['risk']), float(trade_data['reward']),
-            float(trade_data['rrRatio']), str(trade_data['outcome']), str(trade_data['result'])
+            float(trade_data['rrRatio']), str(trade_data['outcome']), str(trade_data['result']),
+            trade_data.get('closed_price', ''), trade_data.get('closed_time', '')
         ]
         
         # Single API call
@@ -129,8 +295,8 @@ def save_trade_to_sheets(trade_data):
     except:
         return False
 
-def delete_trade_from_sheets(trade_id):
-    """Delete a trade from Google Sheets - optimized for speed"""
+def save_all_trades_to_sheets(trades):
+    """Save all trades to Google Sheets (overwrites existing data)"""
     try:
         gc = init_connection()
         if gc is None:
@@ -139,59 +305,33 @@ def delete_trade_from_sheets(trade_id):
         spreadsheet = gc.open(SHEET_NAME)
         sheet = spreadsheet.worksheet(WORKSHEET_NAME)
         
-        # Find and delete in single operation
-        cell = sheet.find(str(trade_id))
-        if cell and cell.col == 1:
-            sheet.delete_rows(cell.row)
-            return True
-        return False
+        # Clear existing data
+        sheet.clear()
         
-    except:
-        return False
-
-def setup_google_sheet_silently():
-    """Set up the Google Sheet with proper headers if it doesn't exist - runs silently in background"""
-    try:
-        gc = init_connection()
-        if gc is None:
-            return False
+        # Add headers (extended with new fields)
+        headers = ['id', 'date', 'trader', 'instrument', 'entry', 'sl', 'target', 
+                  'risk', 'reward', 'rrRatio', 'outcome', 'result', 'closed_price', 'closed_time']
+        sheet.append_row(headers)
         
-        # Step 1: Handle the spreadsheet
-        try:
-            spreadsheet = gc.open(SHEET_NAME)
-        except gspread.SpreadsheetNotFound:
-            # Create new spreadsheet
-            spreadsheet = gc.create(SHEET_NAME)
-        
-        # Step 2: Handle the worksheet
-        try:
-            worksheet = spreadsheet.worksheet(WORKSHEET_NAME)
-        except gspread.WorksheetNotFound:
-            # Create new worksheet named "Trades"
-            worksheet = spreadsheet.add_worksheet(title=WORKSHEET_NAME, rows=1000, cols=12)
-        
-        # Step 3: Setup headers
-        try:
-            headers = worksheet.row_values(1)
-            expected_headers = ['id', 'date', 'trader', 'instrument', 'entry', 'sl', 'target', 'risk', 'reward', 'rrRatio', 'outcome', 'result']
-            
-            if not headers or len(headers) == 0 or headers != expected_headers:
-                # Clear first row and set proper headers
-                worksheet.clear()  # Clear the worksheet first
-                worksheet.append_row(expected_headers)
-            
-        except Exception as e:
-            # Try to add headers anyway
-            try:
-                headers = ['id', 'date', 'trader', 'instrument', 'entry', 'sl', 'target', 'risk', 'reward', 'rrRatio', 'outcome', 'result']
-                worksheet.append_row(headers)
-            except:
-                pass
+        # Add all trades
+        for trade in trades:
+            row_data = [
+                str(trade['id']), str(trade['date']), str(trade['trader']),
+                str(trade['instrument']), float(trade['entry']), float(trade['sl']),
+                float(trade['target']), float(trade['risk']), float(trade['reward']),
+                float(trade['rrRatio']), str(trade['outcome']), str(trade['result']),
+                trade.get('closed_price', ''), trade.get('closed_time', '')
+            ]
+            sheet.append_row(row_data, value_input_option='RAW')
         
         return True
         
-    except:
+    except Exception as e:
+        st.error(f"Failed to save to sheets: {e}")
         return False
+
+# [Keep all your other existing functions: delete_trade_from_sheets, setup_google_sheet_silently, 
+#  load_fallback_data, force_refresh_data, auto_refresh_trades, etc.]
 
 def load_fallback_data():
     """Load fallback data when Google Sheets is not available"""
@@ -199,50 +339,103 @@ def load_fallback_data():
         { 'id': 1, 'date': '2023-10-08', 'trader': 'Waithaka', 'instrument': 'XAUUSD', 'entry': 1820.50, 'sl': 1815.00, 'target': 1830.00, 'risk': 5.50, 'reward': 9.50, 'rrRatio': 1.73, 'outcome': 'Target Hit', 'result': 'Win' },
         { 'id': 2, 'date': '2023-10-07', 'trader': 'Wallace', 'instrument': 'USOIL', 'entry': 89.30, 'sl': 88.50, 'target': 91.00, 'risk': 0.80, 'reward': 1.70, 'rrRatio': 2.13, 'outcome': 'SL Hit', 'result': 'Loss' },
         { 'id': 3, 'date': '2023-10-06', 'trader': 'Max', 'instrument': 'BTCUSD', 'entry': 27450.00, 'sl': 27200.00, 'target': 27800.00, 'risk': 250.00, 'reward': 350.00, 'rrRatio': 1.40, 'outcome': 'Target Hit', 'result': 'Win' },
-        { 'id': 4, 'date': '2023-10-05', 'trader': 'Waithaka', 'instrument': 'EURUSD', 'entry': 1.06250, 'sl': 1.06000, 'target': 1.06700, 'risk': 0.00250, 'reward': 0.00450, 'rrRatio': 1.80, 'outcome': 'Target Hit', 'result': 'Win' },
-        { 'id': 5, 'date': '2023-10-04', 'trader': 'Wallace', 'instrument': 'US30', 'entry': 34500.00, 'sl': 34200.00, 'target': 34900.00, 'risk': 300.00, 'reward': 400.00, 'rrRatio': 1.33, 'outcome': 'Target Hit', 'result': 'Win' }
+        { 'id': 4, 'date': '2023-10-05', 'trader': 'Waithaka', 'instrument': 'EURUSD', 'entry': 1.06250, 'sl': 1.06000, 'target': 1.06700, 'risk': 0.00250, 'reward': 0.00450, 'rrRatio': 1.80, 'outcome': '', 'result': '' },  # Open trade
+        { 'id': 5, 'date': '2023-10-04', 'trader': 'Wallace', 'instrument': 'US30', 'entry': 34500.00, 'sl': 34200.00, 'target': 34900.00, 'risk': 300.00, 'reward': 400.00, 'rrRatio': 1.33, 'outcome': '', 'result': '' }  # Open trade
     ]
 
-# Real-time update functions
-def force_refresh_data():
-    """Force refresh data from Google Sheets and update session state - optimized"""
+# --- UI INTEGRATION (add this after your existing refresh controls) ---
+
+def render_live_price_controls():
+    """Render live price checking controls"""
+    st.markdown("### 📊 Live Market Monitor")
+    
+    # Check API key availability
     try:
-        # Clear cache and get fresh data
-        st.cache_data.clear()
-        fresh_data = load_trades_from_sheets()
-        st.session_state.trades = fresh_data
-        st.session_state.last_data_hash = hash(str(fresh_data))  # Track changes
-        return True
+        api_key_available = bool(st.secrets.get("twelvedata", {}).get("api_key"))
     except:
-        return False
-
-def auto_refresh_trades():
-    """Auto-refresh trades data - optimized to reduce unnecessary updates"""
-    if 'last_auto_refresh' not in st.session_state:
-        st.session_state.last_auto_refresh = time.time()
-    if 'last_data_hash' not in st.session_state:
-        st.session_state.last_data_hash = None
-        
-    # Check if enough time has passed and we're connected
-    if (st.session_state.sheets_connected and 
-        time.time() - st.session_state.last_auto_refresh > REAL_TIME_UPDATE_INTERVAL):
-        
-        st.session_state.last_auto_refresh = time.time()
-        
-        try:
-            # Get fresh data without clearing cache immediately
-            fresh_data = load_trades_from_sheets()
-            current_hash = hash(str(fresh_data))
+        api_key_available = False
+    
+    if not api_key_available:
+        st.warning("⚠️ Twelve Data API key not configured. Add `twelvedata.api_key` to your Streamlit secrets for live price monitoring.")
+        return
+    
+    col1, col2, col3 = st.columns([1, 1, 1])
+    
+    with col1:
+        if st.button("🔄 Check Live Prices Now", type="primary", use_container_width=True):
+            with st.spinner("Checking live prices..."):
+                # Define save callback
+                def save_callback(updated_trades):
+                    if st.session_state.sheets_connected:
+                        save_all_trades_to_sheets(updated_trades)
+                    # Always update session state
+                    st.session_state.trades = updated_trades
+                
+                # Update trade outcomes
+                updated_trades, updates_made = update_trade_outcomes(
+                    st.session_state.trades, 
+                    save_callback=save_callback
+                )
+                
+                if updates_made > 0:
+                    st.success(f"✅ Updated {updates_made} trade(s) based on live prices!")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.info("ℹ️ No trades were updated (no TP/SL conditions met)")
+    
+    with col2:
+        # Auto-refresh configuration
+        auto_refresh_enabled = st.checkbox("Auto-check live prices", value=False)
+        if auto_refresh_enabled:
+            refresh_interval = st.selectbox(
+                "Check interval", 
+                [15, 30, 60, 120], 
+                index=0,
+                format_func=lambda x: f"{x} seconds"
+            )
             
-            # Only update if data actually changed
-            if st.session_state.last_data_hash != current_hash:
-                st.session_state.trades = fresh_data
-                st.session_state.last_data_hash = current_hash
-                st.rerun()
-        except:
-            pass
+            # Auto-refresh component
+            count = st_autorefresh(
+                interval=refresh_interval * 1000, 
+                key="live_price_refresh",
+                limit=None  # No limit
+            )
+            
+            # Perform update on auto-refresh
+            if count > 0:  # Skip first render (count=0)
+                def save_callback(updated_trades):
+                    if st.session_state.sheets_connected:
+                        save_all_trades_to_sheets(updated_trades)
+                    st.session_state.trades = updated_trades
+                
+                updated_trades, updates_made = update_trade_outcomes(
+                    st.session_state.trades, 
+                    save_callback=save_callback
+                )
+                
+                if updates_made > 0:
+                    st.success(f"🔔 Auto-update: {updates_made} trade(s) closed!")
+    
+    with col3:
+        # Open trades summary
+        summary = get_open_trades_summary(st.session_state.trades)
+        st.metric("Open Trades", summary["total_open"])
+        
+        if summary["total_open"] > 0:
+            st.markdown(f"""
+            <div style="font-size: 0.8rem; color: #666;">
+                📈 {len(summary['instruments'])} instruments<br>
+                👥 {len(summary['traders'])} traders<br>
+                💰 Risk: ${summary['total_risk']:.2f}<br>
+                🎯 Potential: ${summary['total_potential_reward']:.2f}
+            </div>
+            """, unsafe_allow_html=True)
 
-# Page configuration
+# --- ADD THIS TO YOUR MAIN APP AFTER THE REFRESH CONTROLS ---
+# Replace your existing refresh controls section with this:
+
+# Page configuration (keep existing)
 st.set_page_config(
     page_title="The War Zone - Forex Trading Analytics",
     page_icon="⚔️",
@@ -250,163 +443,9 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Custom CSS
-st.markdown("""
-<style>
-    .stApp {
-        background-color: #f3f4f6;
-    }
-    
-    .war-zone-header {
-        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-        color: white;
-        padding: 3rem 1.5rem 2rem 1.5rem;
-        border-radius: 0;
-        margin: -1rem -1rem 0 -1rem;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-        text-align: center;
-        position: relative;
-        overflow: hidden;
-    }
-    
-    .war-zone-header::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E") repeat;
-        pointer-events: none;
-    }
-    
-    .war-zone-title {
-        font-size: 4rem;
-        font-weight: 900;
-        margin: 0;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
-        letter-spacing: 2px;
-        position: relative;
-        z-index: 1;
-    }
-    
-    .war-zone-subtitle {
-        font-size: 1.2rem;
-        font-style: italic;
-        margin: 1rem 0 0.5rem 0;
-        opacity: 0.9;
-        position: relative;
-        z-index: 1;
-    }
-    
-    .war-zone-author {
-        font-size: 1rem;
-        font-weight: 600;
-        margin: 0;
-        opacity: 0.8;
-        position: relative;
-        z-index: 1;
-    }
-    
-    .trade-card {
-        background: white;
-        border-radius: 0.5rem;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        margin-bottom: 1.5rem;
-    }
-    
-    .card-header {
-        background-color: #334155;
-        color: white;
-        padding: 0.75rem 1rem;
-        border-radius: 0.5rem 0.5rem 0 0;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-    
-    .card-body {
-        padding: 1.5rem;
-    }
-    
-    .rank-item {
-        display: flex;
-        align-items: center;
-        margin-bottom: 1.5rem;
-        padding: 1rem;
-        background-color: #f8fafc;
-        border-radius: 0.5rem;
-        border-left: 4px solid #3b82f6;
-    }
-    
-    .rank-number {
-        width: 2rem;
-        height: 2rem;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: bold;
-        margin-right: 1rem;
-        color: black;
-    }
-    
-    .rank-1 { background-color: #fbbf24; }
-    .rank-2 { background-color: #9ca3af; }
-    .rank-3 { background-color: #fb923c; }
-    
-    .progress-bar {
-        background-color: #e5e7eb;
-        height: 8px;
-        border-radius: 4px;
-        overflow: hidden;
-        margin: 0.5rem 0;
-    }
-    
-    .progress-fill {
-        background-color: #10b981;
-        height: 100%;
-        transition: width 0.3s ease;
-    }
-    
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    
-    .stDeployButton {display: none;}
-    
-    .main-content {
-        padding: 1.5rem;
-        max-width: 90rem;
-        margin: 0 auto;
-    }
-</style>
-""", unsafe_allow_html=True)
+# [Keep all your existing CSS and initialization code]
 
-# Initialize session state with optimized data loading
-if 'trades' not in st.session_state:
-    st.session_state.trades = load_trades_from_sheets()
-    # Update any existing USTECH trades for Wallace to US30
-    for trade in st.session_state.trades:
-        if trade.get('trader') == 'Wallace' and trade.get('instrument') == 'USTECH':
-            trade['instrument'] = 'US30'
-    st.session_state.last_data_hash = hash(str(st.session_state.trades))
-    
-if 'sheets_connected' not in st.session_state:
-    connection = init_connection()
-    st.session_state.sheets_connected = connection is not None
-    # Silently setup Google Sheets if connected (non-blocking)
-    if st.session_state.sheets_connected:
-        try:
-            setup_google_sheet_silently()
-        except:
-            pass
-
-# Optimized real-time updates
-if st.session_state.sheets_connected:
-    auto_refresh_trades()
-
-# Header - The War Zone
+# Header - The War Zone (keep existing)
 st.markdown("""
 <div class="war-zone-header">
     <h1 class="war-zone-title">THE WAR ZONE</h1>
@@ -417,7 +456,7 @@ st.markdown("""
 
 st.markdown('<div class="main-content">', unsafe_allow_html=True)
 
-# Refresh Controls at the top
+# Enhanced refresh controls with live prices
 refresh_col1, refresh_col2, refresh_col3 = st.columns([1, 2, 1])
 
 with refresh_col2:
@@ -465,420 +504,9 @@ with refresh_col2:
                 </div>
                 """, unsafe_allow_html=True)
 
+# Add live price controls
+render_live_price_controls()
+
 st.markdown("---")
 
-# Add New Trade Section
-st.markdown("""
-<div class="trade-card">
-    <div class="card-header">
-        <div style="display: flex; align-items: center;">
-            <div style="background-color: #0d9488; border-radius: 50%; padding: 0.25rem; margin-right: 0.75rem;">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="12" y1="5" x2="12" y2="19"></line>
-                    <line x1="5" y1="12" x2="19" y2="12"></line>
-                </svg>
-            </div>
-            <span style="font-weight: 600;">Add New Trade</span>
-        </div>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="6,9 12,15 18,9"></polyline>
-        </svg>
-    </div>
-    <div class="card-body">
-""", unsafe_allow_html=True)
-
-# First Row of Form
-col1, col2, col3, col4 = st.columns(4)
-
-with col1:
-    st.markdown('<div class="form-group"><label>Trader</label></div>', unsafe_allow_html=True)
-    trader = st.selectbox("", ["Select Trader", "Waithaka", "Wallace", "Max"], key="trader_select", label_visibility="collapsed")
-
-with col2:
-    st.markdown('<div class="form-group"><label>Instrument</label></div>', unsafe_allow_html=True)
-    # Updated instrument pairs with new additions and option for custom input
-    predefined_pairs = ['XAUUSD', 'USOIL', 'BTCUSD', 'US30', 'US100', 'US500', 'USTECH', 'XRPUSD', 'EURUSD', 'GBPUSD', 'AUDUSD', 'USDJPY', 'USDCAD', 'NZDUSD']
-    
-    instrument_option = st.selectbox("", ["Select from list", "Enter custom pair"], key="instrument_option", label_visibility="collapsed")
-    
-    if instrument_option == "Select from list":
-        instrument = st.selectbox("", ["Select Instrument"] + predefined_pairs, key="instrument_select", label_visibility="collapsed")
-    else:
-        instrument = st.text_input("", placeholder="Enter trading pair (e.g., GBPJPY)", key="custom_instrument", label_visibility="collapsed")
-        if not instrument:
-            instrument = "Select Instrument"
-
-with col3:
-    st.markdown('<div class="form-group"><label>Date</label></div>', unsafe_allow_html=True)
-    trade_date = st.date_input("", value=date.today(), key="date_input", label_visibility="collapsed")
-
-with col4:
-    st.markdown('<div class="form-group"><label>Outcome</label></div>', unsafe_allow_html=True)
-    outcome = st.selectbox("", ["Select Outcome", "Target Hit", "SL Hit"], key="outcome_select", label_visibility="collapsed")
-
-# Second Row of Form
-col5, col6, col7, col8 = st.columns(4)
-
-with col5:
-    st.markdown('<div class="form-group"><label>Entry Price</label></div>', unsafe_allow_html=True)
-    entry = st.number_input("", value=0.0, step=0.01, format="%.4f", key="entry_input", label_visibility="collapsed")
-
-with col6:
-    st.markdown('<div class="form-group"><label>Stop Loss (SL)</label></div>', unsafe_allow_html=True)
-    sl = st.number_input("", value=0.0, step=0.01, format="%.4f", key="sl_input", label_visibility="collapsed")
-
-with col7:
-    st.markdown('<div class="form-group"><label>Target Price</label></div>', unsafe_allow_html=True)
-    target = st.number_input("", value=0.0, step=0.01, format="%.4f", key="target_input", label_visibility="collapsed")
-
-with col8:
-    st.markdown('<div style="padding-top: 1.5rem;"></div>', unsafe_allow_html=True)
-    if st.button("➕ Add Trade", type="primary", use_container_width=True):
-        if trader != "Select Trader" and instrument != "Select Instrument" and instrument.strip() != "" and outcome != "Select Outcome" and entry and sl and target:
-            risk = abs(entry - sl)
-            reward = abs(target - entry)
-            rr_ratio = reward / risk if risk != 0 else 0
-            result = "Win" if outcome == "Target Hit" else "Loss"
-            
-            # Generate new ID
-            max_id = max([trade.get('id', 0) for trade in st.session_state.trades], default=0)
-            
-            new_trade = {
-                'id': max_id + 1,
-                'date': trade_date.strftime('%Y-%m-%d'),
-                'trader': trader,
-                'instrument': instrument.strip().upper(),  # Ensure uppercase
-                'entry': entry,
-                'sl': sl,
-                'target': target,
-                'risk': round(risk, 4),
-                'reward': round(reward, 4),
-                'rrRatio': round(rr_ratio, 2),
-                'outcome': outcome,
-                'result': result
-            }
-            
-            # Add to session state and sync
-            st.session_state.trades.append(new_trade)
-            
-            # Sync to Google Sheets if connected (silently)
-            if st.session_state.sheets_connected:
-                try:
-                    save_trade_to_sheets(new_trade)
-                    force_refresh_data()
-                except Exception as e:
-                    pass
-            
-            st.success("✅ Trade added successfully!")
-            
-            # Force immediate UI refresh
-            time.sleep(0.5)
-            st.rerun()
-        else:
-            st.error("❌ Please fill in all required fields.")
-            # Show which fields are missing
-            missing_fields = []
-            if trader == "Select Trader":
-                missing_fields.append("Trader")
-            if instrument == "Select Instrument" or instrument.strip() == "":
-                missing_fields.append("Instrument")
-            if outcome == "Select Outcome":
-                missing_fields.append("Outcome")
-            if not entry:
-                missing_fields.append("Entry Price")
-            if not sl:
-                missing_fields.append("Stop Loss")
-            if not target:
-                missing_fields.append("Target Price")
-            
-            if missing_fields:
-                st.error(f"Missing: {', '.join(missing_fields)}")
-
-st.markdown('</div></div>', unsafe_allow_html=True)
-
-# Main Content Grid
-col_main, col_sidebar = st.columns([2, 1])
-
-with col_main:
-    # Calculate dynamic rankings based on current data
-    if st.session_state.trades and len(st.session_state.trades) > 0:
-        trader_stats = {}
-        for trade in st.session_state.trades:
-            trader = trade.get('trader', '')
-            if trader and trader != '':
-                if trader not in trader_stats:
-                    trader_stats[trader] = {'wins': 0, 'total': 0}
-                trader_stats[trader]['total'] += 1
-                if trade.get('result', '') == 'Win':
-                    trader_stats[trader]['wins'] += 1
-        
-        # Calculate win rates and sort
-        rankings = []
-        for trader, stats in trader_stats.items():
-            if stats['total'] > 0:
-                win_rate = (stats['wins'] / stats['total']) * 100
-                rankings.append({
-                    'name': trader,
-                    'win_rate': round(win_rate, 1),
-                    'wins': stats['wins'],
-                    'losses': stats['total'] - stats['wins'],
-                    'total': stats['total']
-                })
-        
-        rankings.sort(key=lambda x: x['win_rate'], reverse=True)
-        for i, ranking in enumerate(rankings):
-            ranking['rank'] = i + 1
-    else:
-        rankings = []
-
-    # Trader Performance Rankings
-    st.markdown("""
-    <div class="trade-card">
-        <div class="card-header">
-            <h3 style="font-weight: 600; margin: 0;">Trader Performance Rankings</h3>
-        </div>
-        <div class="card-body">
-    """, unsafe_allow_html=True)
-    
-    if rankings and len(rankings) > 0:
-        for ranking in rankings:
-            rank_class = f"rank-{min(ranking['rank'], 3)}"
-            st.markdown(f"""
-            <div class="rank-item">
-                <div class="rank-number {rank_class}">{ranking['rank']}</div>
-                <div style="flex: 1;">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.25rem;">
-                        <span style="font-weight: 600; color: #1f2937;">{ranking['name']}</span>
-                        <span style="font-size: 0.875rem; font-weight: 500;">Win Rate: {ranking['win_rate']}%</span>
-                    </div>
-                    <div style="font-size: 0.75rem; color: #6b7280; margin-bottom: 0.5rem;">Total Trades: {ranking['total']}</div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: {ranking['win_rate']}%;"></div>
-                    </div>
-                    <div style="font-size: 0.75rem; color: #6b7280;">Wins: {ranking['wins']} | Losses: {ranking['losses']}</div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-    else:
-        st.info("No trades available for rankings. Add some trades to see performance metrics!")
-    
-    st.markdown('</div></div>', unsafe_allow_html=True)
-    
-    # Trading History
-    st.markdown("""
-    <div class="trade-card">
-        <div class="card-header">
-            <h3 style="font-weight: 600; margin: 0;">Trading History</h3>
-        </div>
-        <div class="card-body">
-    """, unsafe_allow_html=True)
-
-    # Display trades table
-    if st.session_state.trades and len(st.session_state.trades) > 0:
-        df = pd.DataFrame(st.session_state.trades)
-        
-        # Sort by date descending (most recent first)
-        df['date'] = pd.to_datetime(df['date'])
-        df = df.sort_values('date', ascending=False)
-        
-        # Format the dataframe for display
-        display_df = df.copy()
-        display_df['date'] = display_df['date'].dt.strftime('%Y-%m-%d')
-        display_df['entry'] = display_df['entry'].round(4)
-        display_df['sl'] = display_df['sl'].round(4)
-        display_df['target'] = display_df['target'].round(4)
-        display_df['risk'] = display_df['risk'].round(4)
-        display_df['reward'] = display_df['reward'].round(4)
-        display_df['rrRatio'] = display_df['rrRatio'].round(2)
-        
-        # Rename columns for better display
-        display_df = display_df.rename(columns={
-            'id': 'ID',
-            'date': 'Date',
-            'trader': 'Trader',
-            'instrument': 'Instrument',
-            'entry': 'Entry',
-            'sl': 'Stop Loss',
-            'target': 'Target',
-            'risk': 'Risk',
-            'reward': 'Reward',
-            'rrRatio': 'R:R Ratio',
-            'outcome': 'Outcome',
-            'result': 'Result'
-        })
-        
-        # Display the table
-        st.dataframe(
-            display_df,
-            use_container_width=True,
-            hide_index=True
-        )
-        
-        # Add delete functionality
-        st.markdown("### Delete Trade")
-        col_delete1, col_delete2 = st.columns([2, 1])
-        
-        with col_delete1:
-            trade_ids = [trade['id'] for trade in st.session_state.trades]
-            selected_id = st.selectbox("Select Trade ID to Delete", [None] + trade_ids)
-        
-        with col_delete2:
-            st.markdown('<div style="padding-top: 1.5rem;"></div>', unsafe_allow_html=True)
-            if st.button("🗑️ Delete Trade", type="secondary"):
-                if selected_id:
-                    # Remove from session state
-                    st.session_state.trades = [trade for trade in st.session_state.trades if trade['id'] != selected_id]
-                    
-                    # Remove from Google Sheets if connected
-                    if st.session_state.sheets_connected:
-                        try:
-                            delete_trade_from_sheets(selected_id)
-                            force_refresh_data()
-                        except:
-                            pass
-                    
-                    st.success(f"✅ Trade {selected_id} deleted successfully!")
-                    time.sleep(0.5)
-                    st.rerun()
-                else:
-                    st.error("❌ Please select a trade ID to delete.")
-
-    else:
-        st.info("No trades available. Add your first trade above!")
-
-    st.markdown('</div></div>', unsafe_allow_html=True)
-
-with col_sidebar:
-    # Quick Stats Card
-    st.markdown("""
-    <div class="trade-card">
-        <div class="card-header">
-            <h3 style="font-weight: 600; margin: 0;">Quick Stats</h3>
-        </div>
-        <div class="card-body">
-    """, unsafe_allow_html=True)
-    
-    if st.session_state.trades and len(st.session_state.trades) > 0:
-        total_trades = len(st.session_state.trades)
-        total_wins = sum(1 for trade in st.session_state.trades if trade.get('result') == 'Win')
-        total_losses = total_trades - total_wins
-        overall_win_rate = (total_wins / total_trades * 100) if total_trades > 0 else 0
-        
-        # Calculate average R:R ratio
-        valid_rr_ratios = [trade.get('rrRatio', 0) for trade in st.session_state.trades if trade.get('rrRatio', 0) > 0]
-        avg_rr_ratio = sum(valid_rr_ratios) / len(valid_rr_ratios) if valid_rr_ratios else 0
-        
-        st.markdown(f"""
-        <div style="text-align: center;">
-            <div style="margin-bottom: 1rem;">
-                <div style="font-size: 2rem; font-weight: bold; color: #1f2937;">{total_trades}</div>
-                <div style="font-size: 0.875rem; color: #6b7280;">Total Trades</div>
-            </div>
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
-                <div>
-                    <div style="font-size: 1.5rem; font-weight: bold; color: #10b981;">{total_wins}</div>
-                    <div style="font-size: 0.75rem; color: #6b7280;">Wins</div>
-                </div>
-                <div>
-                    <div style="font-size: 1.5rem; font-weight: bold; color: #ef4444;">{total_losses}</div>
-                    <div style="font-size: 0.75rem; color: #6b7280;">Losses</div>
-                </div>
-            </div>
-            
-            <div style="margin-bottom: 1rem;">
-                <div style="font-size: 1.25rem; font-weight: bold; color: #3b82f6;">{overall_win_rate:.1f}%</div>
-                <div style="font-size: 0.75rem; color: #6b7280;">Overall Win Rate</div>
-            </div>
-            
-            <div>
-                <div style="font-size: 1.25rem; font-weight: bold; color: #8b5cf6;">{avg_rr_ratio:.2f}</div>
-                <div style="font-size: 0.75rem; color: #6b7280;">Avg R:R Ratio</div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.info("No data available yet. Add some trades to see statistics!")
-    
-    st.markdown('</div></div>', unsafe_allow_html=True)
-    
-    # Recent Activity Card
-    st.markdown("""
-    <div class="trade-card">
-        <div class="card-header">
-            <h3 style="font-weight: 600; margin: 0;">Recent Activity</h3>
-        </div>
-        <div class="card-body">
-    """, unsafe_allow_html=True)
-    
-    if st.session_state.trades and len(st.session_state.trades) > 0:
-        # Get the 5 most recent trades
-        df = pd.DataFrame(st.session_state.trades)
-        df['date'] = pd.to_datetime(df['date'])
-        recent_trades = df.sort_values('date', ascending=False).head(5)
-        
-        for _, trade in recent_trades.iterrows():
-            result_color = "#10b981" if trade['result'] == 'Win' else "#ef4444"
-            result_icon = "📈" if trade['result'] == 'Win' else "📉"
-            
-            st.markdown(f"""
-            <div style="padding: 0.75rem 0; border-bottom: 1px solid #e5e7eb;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <div style="font-weight: 600; color: #1f2937;">{trade['trader']}</div>
-                        <div style="font-size: 0.75rem; color: #6b7280;">{trade['instrument']} • {trade['date'].strftime('%m/%d')}</div>
-                    </div>
-                    <div style="text-align: right;">
-                        <div style="color: {result_color}; font-weight: 600;">{result_icon} {trade['result']}</div>
-                        <div style="font-size: 0.75rem; color: #6b7280;">R:R {trade['rrRatio']:.2f}</div>
-                    </div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-    else:
-        st.info("No recent activity to show.")
-    
-    st.markdown('</div></div>', unsafe_allow_html=True)
-    
-    # Connection Status Card
-    st.markdown("""
-    <div class="trade-card">
-        <div class="card-header">
-            <h3 style="font-weight: 600; margin: 0;">System Status</h3>
-        </div>
-        <div class="card-body">
-    """, unsafe_allow_html=True)
-    
-    if st.session_state.sheets_connected:
-        st.markdown("""
-        <div style="display: flex; align-items: center; margin-bottom: 0.75rem;">
-            <div style="width: 8px; height: 8px; background-color: #10b981; border-radius: 50%; margin-right: 0.5rem;"></div>
-            <span style="color: #10b981; font-weight: 500;">Google Sheets Connected</span>
-        </div>
-        <div style="font-size: 0.75rem; color: #6b7280; margin-bottom: 1rem;">
-            Data syncing automatically every 10 seconds
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.markdown("""
-        <div style="display: flex; align-items: center; margin-bottom: 0.75rem;">
-            <div style="width: 8px; height: 8px; background-color: #f59e0b; border-radius: 50%; margin-right: 0.5rem;"></div>
-            <span style="color: #f59e0b; font-weight: 500;">Local Mode</span>
-        </div>
-        <div style="font-size: 0.75rem; color: #6b7280; margin-bottom: 1rem;">
-            Using fallback data. Set up Google Sheets for live sync.
-        </div>
-        """, unsafe_allow_html=True)
-    
-    # Last update time
-    current_time = datetime.now().strftime("%H:%M:%S")
-    st.markdown(f"""
-    <div style="font-size: 0.75rem; color: #6b7280;">
-        Last updated: {current_time}
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown('</div></div>', unsafe_allow_html=True)
-
-# Close the main content div
-st.markdown('</div>', unsafe_allow_html=True)
+# [Continue with the rest of your existing app code...]
