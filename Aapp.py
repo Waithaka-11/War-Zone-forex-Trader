@@ -666,4 +666,5 @@ with col_main:
     
     # Trading History
     st.markdown("""
-    <div style="background: white; border-radius: 0.5rem; box-shadow: 0 1
+    <div style="background: white; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem;">
+        <div style="background-color: #334155; color: white; padding: 0.75rem 1rem; border-radius:
