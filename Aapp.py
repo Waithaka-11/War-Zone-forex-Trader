@@ -391,7 +391,7 @@ def check_and_update_trades():
     return updates_made
 
 def close_trade(trade_id):
-    """Close a trade by setting outcome to 'Manual Close'"""
+    """Close a trade manually - sets outcome to 'Manual Close'"""
     try:
         # Force complete data refresh
         st.cache_data.clear()
@@ -402,8 +402,9 @@ def close_trade(trade_id):
         trade_updated = False
         for i, trade in enumerate(st.session_state.trades):
             if trade['id'] == trade_id:
+                # Always set to Manual Close for manual closures
                 st.session_state.trades[i]['outcome'] = 'Manual Close'
-                st.session_state.trades[i]['result'] = 'Closed'
+                st.session_state.trades[i]['result'] = 'Closed'  # Neutral result
                 trade_updated = True
                 
                 # Update Google Sheets
@@ -412,7 +413,7 @@ def close_trade(trade_id):
                 break
         
         if trade_updated:
-            st.success(f"✅ Trade #{trade_id} closed successfully!")
+            st.success(f"✅ Trade #{trade_id} manually closed!")
             return True
         else:
             st.error(f"❌ Trade #{trade_id} not found")
@@ -898,8 +899,32 @@ st.markdown("### 📈 Trading Analytics Dashboard")
 total_trades = len(st.session_state.trades)
 closed_trades = [t for t in st.session_state.trades if t['outcome'] in ['Target Hit', 'SL Hit']]
 open_trades = [t for t in st.session_state.trades if t['outcome'] == 'Open']
+manual_closures = [t for t in st.session_state.trades if t['outcome'] == 'Manual Close']  # ADD THIS LINE
 winning_trades = [t for t in closed_trades if t['result'] == 'Win']
-losing_trades = [t for t in closed_trades if t['result'] == 'Loss']
+
+# Then modify your metrics display - FIND THIS SECTION:
+metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+
+with metric_col1:
+    st.metric("Total Trades", total_trades, f"{len(open_trades)} open")
+
+with metric_col2:
+    st.metric("Win Rate", f"{win_rate:.1f}%", f"{len(winning_trades)}/{len(closed_trades)}" if closed_trades else "0/0")
+
+# REPLACE THE ABOVE WITH:
+metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+
+with metric_col1:
+    st.metric("Total Trades", total_trades, f"{len(open_trades)} open")
+
+with metric_col2:
+    st.metric("Market Closures", len(closed_trades), f"{len(manual_closures)} manual")
+
+with metric_col3:
+    st.metric("Win Rate", f"{win_rate:.1f}%", f"{len(winning_trades)}/{len(closed_trades)}" if closed_trades else "0/0")
+
+with metric_col4:
+    st.metric("Total P&L", f"{total_pnl:+.2f}", "All trades")
 
 win_rate = len(winning_trades) / len(closed_trades) * 100 if closed_trades else 0
 avg_rr = np.mean([t['rrRatio'] for t in closed_trades]) if closed_trades else 0
@@ -1019,8 +1044,9 @@ if st.session_state.trades:
                         {trade['target']:.5f}
                     </div>
                     <div>
-                        <strong>Status</strong><br>
-                        {trade['outcome']}
+                      <strong>Status</strong><br>
+                      {trade['outcome']}
+                      {" 🏁" if trade['outcome'] == 'Manual Close' else " ⚡" if trade['outcome'] in ['Target Hit', 'SL Hit'] else ""}
                     </div>
                 </div>
             </div>
@@ -1199,6 +1225,7 @@ st.markdown("""
     Real-time monitoring • Risk management • Performance tracking
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
