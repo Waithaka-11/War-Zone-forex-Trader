@@ -899,19 +899,15 @@ st.markdown("### 📈 Trading Analytics Dashboard")
 total_trades = len(st.session_state.trades)
 closed_trades = [t for t in st.session_state.trades if t['outcome'] in ['Target Hit', 'SL Hit']]
 open_trades = [t for t in st.session_state.trades if t['outcome'] == 'Open']
-manual_closures = [t for t in st.session_state.trades if t['outcome'] == 'Manual Close']  # ADD THIS LINE
+manual_closures = [t for t in st.session_state.trades if t['outcome'] == 'Manual Close']
 winning_trades = [t for t in closed_trades if t['result'] == 'Win']
 
-# Then modify your metrics display - FIND THIS SECTION:
-metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+# Calculate win rate AFTER defining the variables
+win_rate = len(winning_trades) / len(closed_trades) * 100 if closed_trades else 0
+avg_rr = np.mean([t['rrRatio'] for t in closed_trades]) if closed_trades else 0
+total_pnl = sum([t['reward'] if t['result'] == 'Win' else -t['risk'] for t in closed_trades])
 
-with metric_col1:
-    st.metric("Total Trades", total_trades, f"{len(open_trades)} open")
-
-with metric_col2:
-    st.metric("Win Rate", f"{win_rate:.1f}%", f"{len(winning_trades)}/{len(closed_trades)}" if closed_trades else "0/0")
-
-# REPLACE THE ABOVE WITH:
+# Display metrics
 metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
 
 with metric_col1:
@@ -924,26 +920,7 @@ with metric_col3:
     st.metric("Win Rate", f"{win_rate:.1f}%", f"{len(winning_trades)}/{len(closed_trades)}" if closed_trades else "0/0")
 
 with metric_col4:
-    st.metric("Total P&L", f"{total_pnl:+.2f}", "All trades")
-
-win_rate = len(winning_trades) / len(closed_trades) * 100 if closed_trades else 0
-avg_rr = np.mean([t['rrRatio'] for t in closed_trades]) if closed_trades else 0
-total_pnl = sum([t['reward'] if t['result'] == 'Win' else -t['risk'] for t in closed_trades])
-
-# Display metrics
-metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
-
-with metric_col1:
-    st.metric("Total Trades", total_trades, f"{len(open_trades)} open")
-
-with metric_col2:
-    st.metric("Win Rate", f"{win_rate:.1f}%", f"{len(winning_trades)}/{len(closed_trades)}" if closed_trades else "0/0")
-
-with metric_col3:
-    st.metric("Avg R:R Ratio", f"{avg_rr:.2f}", "Risk:Reward")
-
-with metric_col4:
-    st.metric("Total P&L", f"{total_pnl:+.2f}", "All trades")
+    st.metric("Total P&L", f"{total_pnl:+.2f}", "Market trades")
 
 st.markdown("---")
 # DEBUG FUNCTION - ADD THIS RIGHT HERE
@@ -1225,6 +1202,7 @@ st.markdown("""
     Real-time monitoring • Risk management • Performance tracking
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
