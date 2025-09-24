@@ -393,32 +393,33 @@ def check_and_update_trades():
 def close_trade(trade_id):
     """Close a trade by setting outcome to 'Manual Close'"""
     try:
-        # Force refresh data first to get latest state
-        force_refresh_data()
+        # Force complete data refresh
+        st.cache_data.clear()
+        fresh_data = load_trades_from_sheets()
+        st.session_state.trades = fresh_data
         
-        # Find the trade in session state
+        # Find and update the trade
+        trade_updated = False
         for i, trade in enumerate(st.session_state.trades):
             if trade['id'] == trade_id:
-                # Update the trade directly in session state
                 st.session_state.trades[i]['outcome'] = 'Manual Close'
                 st.session_state.trades[i]['result'] = 'Closed'
+                trade_updated = True
                 
-                # Update in Google Sheets if connected
+                # Update Google Sheets
                 if st.session_state.sheets_connected:
-                    success = update_trade_in_sheets(st.session_state.trades[i])
-                    if success:
-                        return True
-                    else:
-                        # Revert if Sheets update fails
-                        st.session_state.trades[i]['outcome'] = 'Open'
-                        st.session_state.trades[i]['result'] = 'Open'
-                        return False
-                return True
+                    update_trade_in_sheets(st.session_state.trades[i])
+                break
         
-        return False  # Trade not found
-        
+        if trade_updated:
+            st.success(f"✅ Trade #{trade_id} closed successfully!")
+            return True
+        else:
+            st.error(f"❌ Trade #{trade_id} not found")
+            return False
+            
     except Exception as e:
-        st.error(f"Error: {str(e)}")
+        st.error(f"❌ Error: {str(e)}")
         return False
 
 def adjust_trade_sl_tp(trade_id, new_sl, new_tp):
@@ -1033,15 +1034,12 @@ if st.session_state.trades:
             # Create columns for the buttons
             button_col1, button_col2 = st.columns(2)
             
-            with button_col1:
-                # Add unique identifier to prevent duplicate keys
-                close_key = f"close_{trade['id']}_{trade['entry']}_{trade['sl']}"
-                if st.button(f"❌ Close Trade #{trade['id']}", key=close_key, use_container_width=True):
-                    st.write("🔄 Attempting to close trade...")
-                    if debug_close_trade(trade['id']):
-                        st.write("✅ Close successful, refreshing...")
-                        time.sleep(2)
-                        st.rerun()
+           with button_col1:
+    close_key = f"close_{trade['id']}_{trade['entry']}_{trade['sl']}"
+    if st.button(f"❌ Close Trade #{trade['id']}", key=close_key, use_container_width=True):
+        if close_trade(trade['id']):
+            time.sleep(1)
+            st.rerun()
             
             with button_col2:
                 # Add unique identifier to prevent duplicate keys
@@ -1206,6 +1204,7 @@ st.markdown("""
     Real-time monitoring • Risk management • Performance tracking
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
