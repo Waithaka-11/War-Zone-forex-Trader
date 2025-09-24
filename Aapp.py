@@ -53,7 +53,6 @@ def load_trades_from_sheets():
         if not all_values or len(all_values) < 2:
             return load_fallback_data()
         
-        # === ADD THIS NEW DATA CLEANING SECTION ===
         # DATA CLEANING: Fix instrument names
         for i, row in enumerate(all_values):
             if len(row) > 3:  # Make sure instrument column exists
@@ -66,7 +65,6 @@ def load_trades_from_sheets():
                     all_values[i][3] = 'NAS100'
                 elif instrument == 'SPX500':
                     all_values[i][3] = 'SPX500'
-        # === END OF NEW SECTION ===
         
         # Continue with existing processing code...
         processed_records = []
@@ -392,6 +390,56 @@ def check_and_update_trades():
     
     return updates_made
 
+def close_trade(trade_id):
+    """Close a trade by setting outcome to 'Manual Close'"""
+    try:
+        # Find the trade in session state
+        for trade in st.session_state.trades:
+            if trade['id'] == trade_id:
+                # Update the trade
+                trade['outcome'] = 'Manual Close'
+                trade['result'] = 'Closed'
+                
+                # Update in Google Sheets if connected
+                if st.session_state.sheets_connected:
+                    return update_trade_in_sheets(trade)
+                else:
+                    return True  # Success for local mode
+        
+        return False  # Trade not found
+    except Exception as e:
+        st.error(f"Error closing trade: {e}")
+        return False
+
+def adjust_trade_sl_tp(trade_id, new_sl, new_tp):
+    """Adjust Stop Loss and Take Profit for a trade"""
+    try:
+        # Validate inputs
+        if new_sl <= 0 or new_tp <= 0:
+            st.error("SL and TP must be positive values")
+            return False
+            
+        # Find the trade in session state
+        for trade in st.session_state.trades:
+            if trade['id'] == trade_id:
+                # Update the trade values
+                trade['sl'] = float(new_sl)
+                trade['target'] = float(new_tp)
+                trade['risk'] = abs(trade['entry'] - trade['sl'])
+                trade['reward'] = abs(trade['target'] - trade['entry'])
+                trade['rrRatio'] = trade['reward'] / trade['risk'] if trade['risk'] > 0 else 0
+                
+                # Update in Google Sheets if connected
+                if st.session_state.sheets_connected:
+                    return update_trade_in_sheets(trade)
+                else:
+                    return True  # Success for local mode
+        
+        return False  # Trade not found
+    except Exception as e:
+        st.error(f"Error adjusting trade: {e}")
+        return False
+
 # Page configuration
 st.set_page_config(
     page_title="The War Zone - Forex Trading Analytics",
@@ -536,10 +584,6 @@ st.markdown("""
 # Initialize session state with optimized data loading
 if 'trades' not in st.session_state:
     st.session_state.trades = load_trades_from_sheets()
-    # Update any existing USTECH trades for Wallace to US30
-    for trade in st.session_state.trades:
-        if trade.get('trader') == 'Wallace' and trade.get('instrument') == 'USTECH':
-            trade['instrument'] = 'US30'
     st.session_state.last_data_hash = hash(str(st.session_state.trades))
     
 if 'sheets_connected' not in st.session_state:
@@ -702,7 +746,7 @@ with monitor_col3:
 
 st.markdown("---")
 
-# Add New Trade Section - UPDATED to remove outcome selection
+# Add New Trade Section
 st.markdown("""
 <div class="trade-card">
     <div class="card-header">
@@ -742,6 +786,7 @@ with col2:
         "US30", "NAS100", "SPX500", "FTSE100", "DAX30",
         "NGAS", "COPPER", "SILVER", "XAGUSD", "USTECH"
     ], key="instrument_select", label_visibility="collapsed")
+
 with col3:
     st.markdown('<div class="form-group"><label>Entry Price</label></div>', unsafe_allow_html=True)
     entry_price = st.number_input("", min_value=0.0, format="%.5f", key="entry_input", label_visibility="collapsed")
@@ -866,53 +911,90 @@ with metric_col4:
 
 st.markdown("---")
 
-def close_trade(trade_id):
-    """Close a trade by setting outcome to 'Manual Close'"""
-    try:
-        # Find the trade in session state
-        for trade in st.session_state.trades:
-            if trade['id'] == trade_id:
-                # Update the trade
-                trade['outcome'] = 'Manual Close'
-                trade['result'] = 'Closed'
-                
-                # Update in Google Sheets if connected
-                if st.session_state.sheets_connected:
-                    return update_trade_in_sheets(trade)
-                else:
-                    return True  # Success for local mode
-        
-        return False  # Trade not found
-    except:
-        return False
+# Recent Trades Section
+st.markdown("### 📋 Recent Trade Setups")
 
-def adjust_trade_sl_tp(trade_id, new_sl, new_tp):
-    """Adjust Stop Loss and Take Profit for a trade"""
-    try:
-        # Find the trade in session state
-        for trade in st.session_state.trades:
-            if trade['id'] == trade_id:
-                # Update the trade values
-                trade['sl'] = float(new_sl)
-                trade['target'] = float(new_tp)
-                trade['risk'] = abs(trade['entry'] - trade['sl'])
-                trade['reward'] = abs(trade['target'] - trade['entry'])
-                trade['rrRatio'] = trade['reward'] / trade['risk'] if trade['risk'] > 0 else 0
-                
-                # Update in Google Sheets if connected
-                if st.session_state.sheets_connected:
-                    return update_trade_in_sheets(trade)
-                else:
-                    return True  # Success for local mode
+if st.session_state.trades:
+    # Display trades in reverse chronological order (newest first)
+    recent_trades = sorted(st.session_state.trades, key=lambda x: x['date'], reverse=True)[:10]
+    
+    for trade in recent_trades:
+        # Determine card color based on outcome
+        if trade['outcome'] == 'Target Hit':
+            border_color = "#10b981"  # Green
+            status_emoji = "✅"
+            show_buttons = False
+        elif trade['outcome'] == 'SL Hit':
+            border_color = "#ef4444"  # Red
+            status_emoji = "❌"
+            show_buttons = False
+        else:
+            border_color = "#3b82f6"  # Blue
+            status_emoji = "⏳"
+            show_buttons = True  # Only show buttons for open trades
         
-        return False  # Trade not found
-    except:
-        return False
-        
-        # Add the actual Streamlit buttons (hidden but functional)
+        # Build the buttons section conditionally
+        buttons_section = ""
         if show_buttons:
-            col1, col2 = st.columns(2)
-            with col1:
+            buttons_section = f"""
+                <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #e2e8f0;">
+                    <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+                        <span style="color: #666; font-size: 0.875rem; align-self: center;">Trade Actions:</span>
+                    </div>
+                </div>
+            """
+        
+        st.markdown(f"""
+        <div class="trade-card" style="border-left: 4px solid {border_color};">
+            <div class="card-header">
+                <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                    <div style="display: flex; align-items: center;">
+                        <div style="background-color: {border_color}; border-radius: 50%; padding: 0.25rem; margin-right: 0.75rem;">
+                            {status_emoji}
+                        </div>
+                        <div>
+                            <strong>{trade['instrument']}</strong> • {trade['trader']} • {trade['date']}
+                        </div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <span>ID: {trade['id']}</span>
+                        <span style="background-color: {'#10b981' if trade['rrRatio'] >= 1 else '#f59e0b'}; 
+                                    color: white; padding: 0.25rem 0.5rem; border-radius: 0.25rem; font-size: 0.875rem;">
+                            R:R {trade['rrRatio']:.2f}
+                        </span>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem;">
+                    <div>
+                        <strong>Entry</strong><br>
+                        {trade['entry']:.5f}
+                    </div>
+                    <div>
+                        <strong>Stop Loss</strong><br>
+                        {trade['sl']:.5f}
+                    </div>
+                    <div>
+                        <strong>Target</strong><br>
+                        {trade['target']:.5f}
+                    </div>
+                    <div>
+                        <strong>Status</strong><br>
+                        {trade['outcome']}
+                    </div>
+                </div>
+                {buttons_section}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Add the actual Streamlit buttons (functional) - ONLY for open trades
+        if show_buttons:
+            # Create columns for the buttons
+            button_col1, button_col2 = st.columns(2)
+            
+            with button_col1:
                 if st.button(f"❌ Close Trade #{trade['id']}", key=f"close_{trade['id']}", use_container_width=True):
                     # Close trade logic
                     if close_trade(trade['id']):
@@ -921,33 +1003,54 @@ def adjust_trade_sl_tp(trade_id, new_sl, new_tp):
                     else:
                         st.error("Failed to close trade")
             
-            with col2:
+            with button_col2:
                 if st.button(f"⚙️ Adjust SL/TP #{trade['id']}", key=f"adjust_{trade['id']}", use_container_width=True):
                     # Show adjustment form
                     st.session_state[f"adjusting_trade_{trade['id']}"] = True
             
-            # Adjustment form
+            # Adjustment form (appears when Adjust button is clicked)
             if st.session_state.get(f"adjusting_trade_{trade['id']}"):
-                with st.expander(f"Adjust SL/TP for Trade #{trade['id']}", expanded=True):
-                    adj_col1, adj_col2 = st.columns(2)
-                    with adj_col1:
-                        new_sl = st.number_input("New Stop Loss", value=float(trade['sl']), key=f"sl_{trade['id']}")
-                    with adj_col2:
-                        new_tp = st.number_input("New Take Profit", value=float(trade['target']), key=f"tp_{trade['id']}")
-                    
-                    adj_col3, adj_col4 = st.columns(2)
-                    with adj_col3:
-                        if st.button("✅ Apply Changes", key=f"apply_{trade['id']}"):
-                            if adjust_trade_sl_tp(trade['id'], new_sl, new_tp):
-                                st.success("SL/TP adjusted successfully!")
-                                st.session_state[f"adjusting_trade_{trade['id']}"] = False
-                                st.rerun()
-                            else:
-                                st.error("Failed to adjust SL/TP")
-                    with adj_col4:
-                        if st.button("❌ Cancel", key=f"cancel_{trade['id']}"):
+                st.markdown("---")
+                st.markdown(f"#### ⚙️ Adjust Trade #{trade['id']}")
+                
+                # Current values display
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Current SL", f"{trade['sl']:.5f}")
+                with col2:
+                    st.metric("Current TP", f"{trade['target']:.5f}")
+                
+                # Adjustment inputs
+                adj_col1, adj_col2 = st.columns(2)
+                with adj_col1:
+                    new_sl = st.number_input("New Stop Loss", value=float(trade['sl']), key=f"sl_{trade['id']}")
+                with adj_col2:
+                    new_tp = st.number_input("New Take Profit", value=float(trade['target']), key=f"tp_{trade['id']}")
+                
+                # Calculate and display new risk/reward
+                new_risk = abs(trade['entry'] - new_sl)
+                new_reward = abs(new_tp - trade['entry'])
+                new_rr = new_reward / new_risk if new_risk > 0 else 0
+                
+                st.info(f"**New R:R Ratio:** {new_rr:.2f} | **Risk:** {new_risk:.5f} | **Reward:** {new_reward:.5f}")
+                
+                # Action buttons
+                adj_col3, adj_col4, adj_col5 = st.columns([1, 1, 2])
+                with adj_col3:
+                    if st.button("✅ Apply", key=f"apply_{trade['id']}", use_container_width=True):
+                        if adjust_trade_sl_tp(trade['id'], new_sl, new_tp):
+                            st.success("SL/TP adjusted successfully!")
                             st.session_state[f"adjusting_trade_{trade['id']}"] = False
                             st.rerun()
+                        else:
+                            st.error("Failed to adjust SL/TP")
+                with adj_col4:
+                    if st.button("❌ Cancel", key=f"cancel_{trade['id']}", use_container_width=True):
+                        st.session_state[f"adjusting_trade_{trade['id']}"] = False
+                        st.rerun()
+                
+                st.markdown("---")
+
 else:
     st.info("No trades recorded yet. Add your first trade setup above!")
 
@@ -1039,7 +1142,7 @@ else:
 
 st.markdown("</div>", unsafe_allow_html=True)
 
-# Navigation Section - ADD THIS NEW SECTION
+# Navigation Section
 st.markdown("---")
 st.markdown("### 🚀 Quick Navigation")
 
@@ -1055,18 +1158,9 @@ with col2:
 
 # Footer
 st.markdown("---")
-
-# Footer
-st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: #666; font-size: 0.875rem; padding: 2rem 0;">
     <strong>The War Zone</strong> • Forex Trading Analytics Dashboard<br>
     Real-time monitoring • Risk management • Performance tracking
 </div>
 """, unsafe_allow_html=True)
-
-
-
-
-
-
