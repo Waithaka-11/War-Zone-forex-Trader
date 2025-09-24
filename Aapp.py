@@ -920,6 +920,45 @@ with metric_col4:
     st.metric("Total P&L", f"{total_pnl:+.2f}", "All trades")
 
 st.markdown("---")
+# DEBUG FUNCTION - ADD THIS RIGHT HERE
+def debug_close_trade(trade_id):
+    """Debug version to see what's happening"""
+    try:
+        st.write("🔍 DEBUG: Starting close_trade function")
+        st.write(f"🔍 DEBUG: Looking for trade ID: {trade_id}")
+        
+        # Show current trades
+        st.write("🔍 DEBUG: Current trades in session state:")
+        for i, trade in enumerate(st.session_state.trades):
+            st.write(f"  Trade {i}: ID={trade['id']}, Outcome={trade['outcome']}")
+            if trade['id'] == trade_id:
+                st.write(f"  ✅ FOUND TRADE TO CLOSE: {trade}")
+        
+        # Try to close the trade
+        for i, trade in enumerate(st.session_state.trades):
+            if trade['id'] == trade_id:
+                st.write("🔍 DEBUG: Updating trade outcome...")
+                st.session_state.trades[i]['outcome'] = 'Manual Close'
+                st.session_state.trades[i]['result'] = 'Closed'
+                
+                st.write("🔍 DEBUG: After update:")
+                st.write(f"  Trade now: {st.session_state.trades[i]}")
+                
+                # Try to update Google Sheets
+                if st.session_state.sheets_connected:
+                    st.write("🔍 DEBUG: Updating Google Sheets...")
+                    success = update_trade_in_sheets(st.session_state.trades[i])
+                    st.write(f"🔍 DEBUG: Google Sheets update result: {success}")
+                
+                st.success("✅ Trade closed successfully!")
+                return True
+        
+        st.error("❌ Trade not found")
+        return False
+        
+    except Exception as e:
+        st.error(f"❌ Error: {str(e)}")
+        return False
 
 # Recent Trades Section
 st.markdown("### 📋 Recent Trade Setups")
@@ -995,13 +1034,12 @@ if st.session_state.trades:
             button_col1, button_col2 = st.columns(2)
             
             with button_col1:
-                if st.button(f"❌ Close Trade #{trade['id']}", key=f"close_{trade['id']}", use_container_width=True):
-                    # Close trade logic
-                    if close_trade(trade['id']):
-                        st.success(f"Trade #{trade['id']} closed successfully!")
-                        st.rerun()
-                    else:
-                        st.error("Failed to close trade")
+    if st.button(f"❌ Close Trade #{trade['id']}", key=f"close_{trade['id']}", use_container_width=True):
+        st.write("🔄 Attempting to close trade...")
+        if debug_close_trade(trade['id']):
+            st.write("✅ Close successful, refreshing...")
+            time.sleep(2)
+            st.rerun()
             
             with button_col2:
                 if st.button(f"⚙️ Adjust SL/TP #{trade['id']}", key=f"adjust_{trade['id']}", use_container_width=True):
@@ -1164,5 +1202,6 @@ st.markdown("""
     Real-time monitoring • Risk management • Performance tracking
 </div>
 """, unsafe_allow_html=True)
+
 
 
