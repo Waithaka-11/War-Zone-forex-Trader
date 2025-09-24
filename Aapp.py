@@ -393,22 +393,32 @@ def check_and_update_trades():
 def close_trade(trade_id):
     """Close a trade by setting outcome to 'Manual Close'"""
     try:
+        # Force refresh data first to get latest state
+        force_refresh_data()
+        
         # Find the trade in session state
-        for trade in st.session_state.trades:
+        for i, trade in enumerate(st.session_state.trades):
             if trade['id'] == trade_id:
-                # Update the trade
-                trade['outcome'] = 'Manual Close'
-                trade['result'] = 'Closed'
+                # Update the trade directly in session state
+                st.session_state.trades[i]['outcome'] = 'Manual Close'
+                st.session_state.trades[i]['result'] = 'Closed'
                 
                 # Update in Google Sheets if connected
                 if st.session_state.sheets_connected:
-                    return update_trade_in_sheets(trade)
-                else:
-                    return True  # Success for local mode
+                    success = update_trade_in_sheets(st.session_state.trades[i])
+                    if success:
+                        return True
+                    else:
+                        # Revert if Sheets update fails
+                        st.session_state.trades[i]['outcome'] = 'Open'
+                        st.session_state.trades[i]['result'] = 'Open'
+                        return False
+                return True
         
         return False  # Trade not found
+        
     except Exception as e:
-        st.error(f"Error closing trade: {e}")
+        st.error(f"Error: {str(e)}")
         return False
 
 def adjust_trade_sl_tp(trade_id, new_sl, new_tp):
@@ -1154,4 +1164,5 @@ st.markdown("""
     Real-time monitoring • Risk management • Performance tracking
 </div>
 """, unsafe_allow_html=True)
+
 
