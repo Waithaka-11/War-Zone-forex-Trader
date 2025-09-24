@@ -967,27 +967,27 @@ def debug_close_trade(trade_id):
 st.markdown("### 📋 Recent Trade Setups")
 
 if st.session_state.trades:
-    # Display trades in reverse chronological order (newest first)
     recent_trades = sorted(st.session_state.trades, key=lambda x: x['date'], reverse=True)[:10]
     
-    # Determine card color based on outcome
-if trade['outcome'] == 'Target Hit':
-    border_color = "#10b981"  # Green
-    status_emoji = "✅"
-    show_buttons = False
-elif trade['outcome'] == 'SL Hit':
-    border_color = "#ef4444"  # Red
-    status_emoji = "❌"
-    show_buttons = False
-elif trade['outcome'] == 'Manual Close':  # ADD THIS
-    border_color = "#8b5cf6"  # Purple
-    status_emoji = "🏁"
-    show_buttons = False
-else:  # This means trade is OPEN
-    border_color = "#3b82f6"  # Blue
-    status_emoji = "⏳"
-    show_buttons = True  # Show buttons for open trades
-        
+    for trade in recent_trades:
+        # Determine card color based on outcome
+        if trade['outcome'] == 'Target Hit':
+            border_color = "#10b981"
+            status_emoji = "✅"
+            show_buttons = False
+        elif trade['outcome'] == 'SL Hit':
+            border_color = "#ef4444"
+            status_emoji = "❌"
+            show_buttons = False
+        elif trade['outcome'] == 'Manual Close':
+            border_color = "#8b5cf6"
+            status_emoji = "🏁"
+            show_buttons = False
+        else:
+            border_color = "#3b82f6"
+            status_emoji = "⏳"
+            show_buttons = True
+
         st.markdown(f"""
         <div class="trade-card" style="border-left: 4px solid {border_color};">
             <div class="card-header">
@@ -1002,8 +1002,7 @@ else:  # This means trade is OPEN
                     </div>
                     <div style="display: flex; align-items: center; gap: 1rem;">
                         <span>ID: {trade['id']}</span>
-                        <span style="background-color: {'#10b981' if trade['rrRatio'] >= 1 else '#f59e0b'}; 
-                                    color: white; padding: 0.25rem 0.5rem; border-radius: 0.25rem; font-size: 0.875rem;">
+                        <span style="background-color: {'#10b981' if trade['rrRatio'] >= 1 else '#f59e0b'}; color: white; padding: 0.25rem 0.5rem; border-radius: 0.25rem; font-size: 0.875rem;">
                             R:R {trade['rrRatio']:.2f}
                         </span>
                     </div>
@@ -1011,92 +1010,28 @@ else:  # This means trade is OPEN
             </div>
             <div class="card-body">
                 <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem;">
-                    <div>
-                        <strong>Entry</strong><br>
-                        {trade['entry']:.5f}
-                    </div>
-                    <div>
-                        <strong>Stop Loss</strong><br>
-                        {trade['sl']:.5f}
-                    </div>
-                    <div>
-                        <strong>Target</strong><br>
-                        {trade['target']:.5f}
-                    </div>
-                    <div>
-                      <strong>Status</strong><br>
-                      {trade['outcome']}
-                      <div>
-                        {" 🏁" if trade['outcome'] == 'Manual Close' else " ⚡" if trade['outcome'] in ['Target Hit', 'SL Hit'] else " 📝"}
-                      </div>
-                    </div>
+                    <div><strong>Entry</strong><br>{trade['entry']:.5f}</div>
+                    <div><strong>Stop Loss</strong><br>{trade['sl']:.5f}</div>
+                    <div><strong>Target</strong><br>{trade['target']:.5f}</div>
+                    <div><strong>Status</strong><br>{trade['outcome']}</div>
                 </div>
             </div>
         </div>
         """, unsafe_allow_html=True)
         
-                          # Add the actual Streamlit buttons (functional) - ONLY for open trades
-if show_buttons:
-      
-    # Create columns for the buttons
-    button_col1, button_col2 = st.columns(2)
-    
-    with button_col1:
-        close_key = f"close_{trade['id']}_{trade['entry']}_{trade['sl']}"
-        if st.button(f"❌ Close Trade #{trade['id']}", key=close_key, use_container_width=True):
-            if close_trade(trade['id']):
-                time.sleep(1)
-                st.rerun()
-    
-    with button_col2:
-        adjust_key = f"adjust_{trade['id']}_{trade['entry']}_{trade['sl']}"
-        if st.button(f"⚙️ Adjust SL/TP #{trade['id']}", key=adjust_key, use_container_width=True):
-            # Show adjustment form
-            st.session_state[f"adjusting_trade_{trade['id']}"] = True
-            
-            # Adjustment form (appears when Adjust button is clicked)
-            if st.session_state.get(f"adjusting_trade_{trade['id']}"):
-                st.markdown("---")
-                st.markdown(f"#### ⚙️ Adjust Trade #{trade['id']}")
-                
-                # Current values display
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("Current SL", f"{trade['sl']:.5f}")
-                with col2:
-                    st.metric("Current TP", f"{trade['target']:.5f}")
-                
-                # Adjustment inputs
-                adj_col1, adj_col2 = st.columns(2)
-                with adj_col1:
-                    new_sl = st.number_input("New Stop Loss", value=float(trade['sl']), key=f"sl_{trade['id']}")
-                with adj_col2:
-                    new_tp = st.number_input("New Take Profit", value=float(trade['target']), key=f"tp_{trade['id']}")
-                
-                # Calculate and display new risk/reward
-                new_risk = abs(trade['entry'] - new_sl)
-                new_reward = abs(new_tp - trade['entry'])
-                new_rr = new_reward / new_risk if new_risk > 0 else 0
-                
-                st.info(f"**New R:R Ratio:** {new_rr:.2f} | **Risk:** {new_risk:.5f} | **Reward:** {new_reward:.5f}")
-                
-                # Action buttons
-                adj_col3, adj_col4 = st.columns(2)
-                with adj_col3:
-                    if st.button("✅ Apply Changes", key=f"apply_{trade['id']}", use_container_width=True):
-                        if adjust_trade_sl_tp(trade['id'], new_sl, new_tp):
-                            st.session_state[f"adjusting_trade_{trade['id']}"] = False
-                            st.rerun()
-                with adj_col4:
-                    if st.button("❌ Cancel", key=f"cancel_{trade['id']}", use_container_width=True):
-                        st.session_state[f"adjusting_trade_{trade['id']}"] = False
+        # Add buttons for open trades
+        if show_buttons:
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button(f"❌ Close Trade #{trade['id']}", key=f"close_{trade['id']}", use_container_width=True):
+                    if close_trade(trade['id']):
                         st.rerun()
-                
-                st.markdown("---")
-            
-            st.markdown("---")
+            with col2:
+                if st.button(f"⚙️ Adjust SL/TP #{trade['id']}", key=f"adjust_{trade['id']}", use_container_width=True):
+                    st.session_state[f"adjust_{trade['id']}"] = True
+
 else:
-    st.info("No trades recorded yet. Add your first trade setup above!")
+    st.info("No trades recorded yet.")
 
 # Trader Performance Rankings
 st.markdown("### 🏆 Trader Performance Rankings")
@@ -1206,6 +1141,7 @@ st.markdown("""
     Real-time monitoring • Risk management • Performance tracking
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
