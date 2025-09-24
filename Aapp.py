@@ -933,17 +933,6 @@ if st.session_state.trades:
             status_emoji = "⏳"
             show_buttons = True  # Only show buttons for open trades
         
-        # Build the buttons section conditionally
-        buttons_section = ""
-        if show_buttons:
-            buttons_section = f"""
-                <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #e2e8f0;">
-                    <div style="display: flex; gap: 1rem; justify-content: flex-end;">
-                        <span style="color: #666; font-size: 0.875rem; align-self: center;">Trade Actions:</span>
-                    </div>
-                </div>
-            """
-        
         st.markdown(f"""
         <div class="trade-card" style="border-left: 4px solid {border_color};">
             <div class="card-header">
@@ -984,13 +973,14 @@ if st.session_state.trades:
                         {trade['outcome']}
                     </div>
                 </div>
-                {buttons_section}
             </div>
         </div>
         """, unsafe_allow_html=True)
         
         # Add the actual Streamlit buttons (functional) - ONLY for open trades
         if show_buttons:
+            st.markdown("**Trade Actions:**")
+            
             # Create columns for the buttons
             button_col1, button_col2 = st.columns(2)
             
@@ -1035,9 +1025,9 @@ if st.session_state.trades:
                 st.info(f"**New R:R Ratio:** {new_rr:.2f} | **Risk:** {new_risk:.5f} | **Reward:** {new_reward:.5f}")
                 
                 # Action buttons
-                adj_col3, adj_col4, adj_col5 = st.columns([1, 1, 2])
+                adj_col3, adj_col4 = st.columns(2)
                 with adj_col3:
-                    if st.button("✅ Apply", key=f"apply_{trade['id']}", use_container_width=True):
+                    if st.button("✅ Apply Changes", key=f"apply_{trade['id']}", use_container_width=True):
                         if adjust_trade_sl_tp(trade['id'], new_sl, new_tp):
                             st.success("SL/TP adjusted successfully!")
                             st.session_state[f"adjusting_trade_{trade['id']}"] = False
@@ -1050,11 +1040,11 @@ if st.session_state.trades:
                         st.rerun()
                 
                 st.markdown("---")
+            
+            st.markdown("---")
 
 else:
     st.info("No trades recorded yet. Add your first trade setup above!")
-
-st.markdown("---")
 
 # Trader Performance Rankings
 st.markdown("### 🏆 Trader Performance Rankings")
@@ -1164,3 +1154,4 @@ st.markdown("""
     Real-time monitoring • Risk management • Performance tracking
 </div>
 """, unsafe_allow_html=True)
+
