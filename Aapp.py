@@ -866,89 +866,48 @@ with metric_col4:
 
 st.markdown("---")
 
-# Recent Trades Section
-st.markdown("### 📋 Recent Trade Setups")
-
-if st.session_state.trades:
-    # Display trades in reverse chronological order (newest first)
-    recent_trades = sorted(st.session_state.trades, key=lambda x: x['date'], reverse=True)[:10]
-    
-    for trade in recent_trades:
-        # Determine card color based on outcome
-        if trade['outcome'] == 'Target Hit':
-            border_color = "#10b981"  # Green
-            status_emoji = "✅"
-            show_buttons = False
-        elif trade['outcome'] == 'SL Hit':
-            border_color = "#ef4444"  # Red
-            status_emoji = "❌"
-            show_buttons = False
-        else:
-            border_color = "#3b82f6"  # Blue
-            status_emoji = "⏳"
-            show_buttons = True  # Only show buttons for open trades
-        
-        st.markdown(f"""
-        <div class="trade-card" style="border-left: 4px solid {border_color};">
-            <div class="card-header">
-                <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
-                    <div style="display: flex; align-items: center;">
-                        <div style="background-color: {border_color}; border-radius: 50%; padding: 0.25rem; margin-right: 0.75rem;">
-                            {status_emoji}
-                        </div>
-                        <div>
-                            <strong>{trade['instrument']}</strong> • {trade['trader']} • {trade['date']}
-                        </div>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 1rem;">
-                        <span>ID: {trade['id']}</span>
-                        <span style="background-color: {'#10b981' if trade['rrRatio'] >= 1 else '#f59e0b'}; 
-                                    color: white; padding: 0.25rem 0.5rem; border-radius: 0.25rem; font-size: 0.875rem;">
-                            R:R {trade['rrRatio']:.2f}
-                        </span>
-                    </div>
-                </div>
-            </div>
-            <div class="card-body">
-                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem;">
-                    <div>
-                        <strong>Entry</strong><br>
-                        {trade['entry']:.5f}
-                    </div>
-                    <div>
-                        <strong>Stop Loss</strong><br>
-                        {trade['sl']:.5f}
-                    </div>
-                    <div>
-                        <strong>Target</strong><br>
-                        {trade['target']:.5f}
-                    </div>
-                    <div>
-                        <strong>Status</strong><br>
-                        {trade['outcome']}
-                    </div>
-                </div>
+def close_trade(trade_id):
+    """Close a trade by setting outcome to 'Manual Close'"""
+    try:
+        # Find the trade in session state
+        for trade in st.session_state.trades:
+            if trade['id'] == trade_id:
+                # Update the trade
+                trade['outcome'] = 'Manual Close'
+                trade['result'] = 'Closed'
                 
-                {/* ADD THIS BUTTONS SECTION */}
-                {show_buttons and f"""
-                <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #e2e8f0;">
-                    <div style="display: flex; gap: 1rem; justify-content: flex-end;">
-                        <button style="background-color: #ef4444; color: white; border: none; padding: 0.5rem 1rem; 
-                                    border-radius: 0.375rem; cursor: pointer; font-size: 0.875rem;"
-                                onclick="closeTrade({trade['id']})">
-                            ❌ Close Trade
-                        </button>
-                        <button style="background-color: #f59e0b; color: white; border: none; padding: 0.5rem 1rem; 
-                                    border-radius: 0.375rem; cursor: pointer; font-size: 0.875rem;"
-                                onclick="adjustTrade({trade['id']})">
-                            ⚙️ Adjust SL/TP
-                        </button>
-                    </div>
-                </div>
-                """ or ""}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+                # Update in Google Sheets if connected
+                if st.session_state.sheets_connected:
+                    return update_trade_in_sheets(trade)
+                else:
+                    return True  # Success for local mode
+        
+        return False  # Trade not found
+    except:
+        return False
+
+def adjust_trade_sl_tp(trade_id, new_sl, new_tp):
+    """Adjust Stop Loss and Take Profit for a trade"""
+    try:
+        # Find the trade in session state
+        for trade in st.session_state.trades:
+            if trade['id'] == trade_id:
+                # Update the trade values
+                trade['sl'] = float(new_sl)
+                trade['target'] = float(new_tp)
+                trade['risk'] = abs(trade['entry'] - trade['sl'])
+                trade['reward'] = abs(trade['target'] - trade['entry'])
+                trade['rrRatio'] = trade['reward'] / trade['risk'] if trade['risk'] > 0 else 0
+                
+                # Update in Google Sheets if connected
+                if st.session_state.sheets_connected:
+                    return update_trade_in_sheets(trade)
+                else:
+                    return True  # Success for local mode
+        
+        return False  # Trade not found
+    except:
+        return False
         
         # Add the actual Streamlit buttons (hidden but functional)
         if show_buttons:
@@ -1105,6 +1064,7 @@ st.markdown("""
     Real-time monitoring • Risk management • Performance tracking
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
