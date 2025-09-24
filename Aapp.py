@@ -970,20 +970,23 @@ if st.session_state.trades:
     # Display trades in reverse chronological order (newest first)
     recent_trades = sorted(st.session_state.trades, key=lambda x: x['date'], reverse=True)[:10]
     
-    for trade in recent_trades:
-        # Determine card color based on outcome
-        if trade['outcome'] == 'Target Hit':
-            border_color = "#10b981"  # Green
-            status_emoji = "✅"
-            show_buttons = False
-        elif trade['outcome'] == 'SL Hit':
-            border_color = "#ef4444"  # Red
-            status_emoji = "❌"
-            show_buttons = False
-        else:
-            border_color = "#3b82f6"  # Blue
-            status_emoji = "⏳"
-            show_buttons = True  # Only show buttons for open trades
+    # Determine card color based on outcome
+if trade['outcome'] == 'Target Hit':
+    border_color = "#10b981"  # Green
+    status_emoji = "✅"
+    show_buttons = False
+elif trade['outcome'] == 'SL Hit':
+    border_color = "#ef4444"  # Red
+    status_emoji = "❌"
+    show_buttons = False
+elif trade['outcome'] == 'Manual Close':  # ADD THIS
+    border_color = "#8b5cf6"  # Purple
+    status_emoji = "🏁"
+    show_buttons = False
+else:  # This means trade is OPEN
+    border_color = "#3b82f6"  # Blue
+    status_emoji = "⏳"
+    show_buttons = True  # Show buttons for open trades
         
         st.markdown(f"""
         <div class="trade-card" style="border-left: 4px solid {border_color};">
@@ -1203,6 +1206,7 @@ st.markdown("""
     Real-time monitoring • Risk management • Performance tracking
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
