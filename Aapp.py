@@ -1023,7 +1023,9 @@ if st.session_state.trades:
                     <div>
                       <strong>Status</strong><br>
                       {trade['outcome']}
-                      {" 🏁" if trade['outcome'] == 'Manual Close' else " ⚡" if trade['outcome'] in ['Target Hit', 'SL Hit'] else ""}
+                      <div>
+                        {" 🏁" if trade['outcome'] == 'Manual Close' else " ⚡" if trade['outcome'] in ['Target Hit', 'SL Hit'] else " 📝"}
+                      </div>
                     </div>
                 </div>
             </div>
@@ -1201,6 +1203,7 @@ st.markdown("""
     Real-time monitoring • Risk management • Performance tracking
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
