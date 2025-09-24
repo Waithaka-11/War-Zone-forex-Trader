@@ -1026,7 +1026,7 @@ if st.session_state.trades:
         </div>
         """, unsafe_allow_html=True)
         
-        # Add the actual Streamlit buttons (functional) - ONLY for open trades
+               # Add the actual Streamlit buttons (functional) - ONLY for open trades
         if show_buttons:
             st.markdown("**Trade Actions:**")
             
@@ -1034,12 +1034,17 @@ if st.session_state.trades:
             button_col1, button_col2 = st.columns(2)
             
             with button_col1:
-    if st.button(f"❌ Close Trade #{trade['id']}", key=f"close_{trade['id']}", use_container_width=True):
-        st.write("🔄 Attempting to close trade...")
-        if debug_close_trade(trade['id']):
-            st.write("✅ Close successful, refreshing...")
-            time.sleep(2)
-            st.rerun()
+                if st.button(f"❌ Close Trade #{trade['id']}", key=f"close_{trade['id']}", use_container_width=True):
+                    st.write("🔄 Attempting to close trade...")
+                    if debug_close_trade(trade['id']):
+                        st.write("✅ Close successful, refreshing...")
+                        time.sleep(2)
+                        st.rerun()
+            
+            with button_col2:
+                if st.button(f"⚙️ Adjust SL/TP #{trade['id']}", key=f"adjust_{trade['id']}", use_container_width=True):
+                    # Show adjustment form
+                    st.session_state[f"adjusting_trade_{trade['id']}"] = True
             
             with button_col2:
                 if st.button(f"⚙️ Adjust SL/TP #{trade['id']}", key=f"adjust_{trade['id']}", use_container_width=True):
@@ -1202,6 +1207,7 @@ st.markdown("""
     Real-time monitoring • Risk management • Performance tracking
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
