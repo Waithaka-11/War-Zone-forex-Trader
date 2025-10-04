@@ -388,7 +388,7 @@ def check_and_update_trades():
     return updates_made
 
 def close_trade(trade_id, close_type="manual", current_price=None):
-    """Close a trade and calculate P&L based on current price or manual selection"""
+    """Close a trade and calculate P&L based on current price"""
     try:
         # Force complete data refresh
         st.cache_data.clear()
@@ -408,24 +408,27 @@ def close_trade(trade_id, close_type="manual", current_price=None):
                     is_long = target > entry
                     
                     if is_long:
-                        # Long trade
+                        # Long trade: profit if current > entry
                         pnl = current_price - entry
                     else:
-                        # Short trade
+                        # Short trade: profit if entry > current
                         pnl = entry - current_price
                     
-                    # Determine if win or loss
+                    # Store the close price in the outcome field
+                    st.session_state.trades[i]['outcome'] = f'Manual Close @ {current_price:.5f}'
+                    
+                    # Determine if win or loss and store actual P&L
                     if pnl > 0:
-                        st.session_state.trades[i]['outcome'] = 'Manual Close'
                         st.session_state.trades[i]['result'] = 'Win'
-                        st.session_state.trades[i]['reward'] = abs(pnl)  # Store actual profit
-                    else:
-                        st.session_state.trades[i]['outcome'] = 'Manual Close'
+                        st.session_state.trades[i]['reward'] = abs(pnl)  # Actual profit
+                    elif pnl < 0:
                         st.session_state.trades[i]['result'] = 'Loss'
-                        st.session_state.trades[i]['risk'] = abs(pnl)  # Store actual loss
+                        st.session_state.trades[i]['risk'] = abs(pnl)  # Actual loss
+                    else:
+                        st.session_state.trades[i]['result'] = 'Breakeven'
                 else:
-                    # Neutral close
-                    st.session_state.trades[i]['outcome'] = 'Manual Close'
+                    # Couldn't get price - mark as breakeven
+                    st.session_state.trades[i]['outcome'] = 'Manual Close @ N/A'
                     st.session_state.trades[i]['result'] = 'Breakeven'
                 
                 trade_updated = True
@@ -965,22 +968,35 @@ if st.session_state.trades:
     
     for trade in recent_trades:
         # Determine card color based on outcome
-        if trade['outcome'] == 'Target Hit':
+        if 'Manual Close' in trade['outcome']:
+            border_color = "#8b5cf6"
+            status_emoji = "🏁"
+            show_buttons = False
+            # Extract close price from outcome if available
+            close_price_text = trade['outcome']
+        elif trade['outcome'] == 'Target Hit':
             border_color = "#10b981"
             status_emoji = "✅"
             show_buttons = False
+            close_price_text = f"Target Hit @ {trade['target']:.5f}"
         elif trade['outcome'] == 'SL Hit':
             border_color = "#ef4444"
             status_emoji = "❌"
             show_buttons = False
-        elif trade['outcome'] == 'Manual Close':
-            border_color = "#8b5cf6"
-            status_emoji = "🏁"
-            show_buttons = False
+            close_price_text = f"SL Hit @ {trade['sl']:.5f}"
         else:
             border_color = "#3b82f6"
             status_emoji = "⏳"
             show_buttons = True
+            close_price_text = "Open"
+        
+        # Calculate P&L display
+        if trade['result'] == 'Win':
+            pnl_display = f'<span style="color: #10b981;">+{trade["reward"]:.5f}</span>'
+        elif trade['result'] == 'Loss':
+            pnl_display = f'<span style="color: #ef4444;">-{trade["risk"]:.5f}</span>'
+        else:
+            pnl_display = '<span style="color: #6b7280;">0.00000</span>'
 
         st.markdown(f"""
         <div class="trade-card" style="border-left: 4px solid {border_color};">
@@ -1003,17 +1019,18 @@ if st.session_state.trades:
                 </div>
             </div>
             <div class="card-body">
-                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem;">
+                <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 1rem;">
                     <div><strong>Entry</strong><br>{trade['entry']:.5f}</div>
                     <div><strong>Stop Loss</strong><br>{trade['sl']:.5f}</div>
                     <div><strong>Target</strong><br>{trade['target']:.5f}</div>
-                    <div><strong>Status</strong><br>{trade['outcome']}</div>
+                    <div><strong>Status</strong><br>{close_price_text}</div>
+                    <div><strong>P&L</strong><br>{pnl_display}</div>
                 </div>
             </div>
         </div>
         """, unsafe_allow_html=True)
         
-# Add buttons for open trades
+        # Add buttons for open trades
         if show_buttons:
             # Check if adjustment UI should be shown for this trade
             if st.session_state.get(f"adjust_{trade['id']}", False):
@@ -1186,6 +1203,7 @@ st.markdown("""
     Real-time monitoring • Risk management • Performance tracking
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
