@@ -40,18 +40,11 @@ def load_trades_data():
         from Aapp import load_trades_from_sheets
         return load_trades_from_sheets()
     except:
-        # Enhanced fallback data with more variety
+        # Enhanced fallback data
         return [
             {'id': 1, 'date': '2024-01-15', 'trader': 'Waithaka', 'instrument': 'XAUUSD', 'entry': 1820.5, 'sl': 1815.0, 'target': 1830.0, 'risk': 5.5, 'reward': 9.5, 'rrRatio': 1.73, 'outcome': 'Target Hit', 'result': 'Win'},
             {'id': 2, 'date': '2024-01-14', 'trader': 'Wallace', 'instrument': 'USOIL', 'entry': 89.3, 'sl': 88.5, 'target': 91.0, 'risk': 0.8, 'reward': 1.7, 'rrRatio': 2.13, 'outcome': 'SL Hit', 'result': 'Loss'},
             {'id': 3, 'date': '2024-01-13', 'trader': 'Max', 'instrument': 'BTCUSD', 'entry': 27450.0, 'sl': 27200.0, 'target': 27800.0, 'risk': 250.0, 'reward': 350.0, 'rrRatio': 1.4, 'outcome': 'Open', 'result': 'Open'},
-            {'id': 4, 'date': '2024-01-12', 'trader': 'Waithaka', 'instrument': 'EURUSD', 'entry': 1.0625, 'sl': 1.06, 'target': 1.067, 'risk': 0.0025, 'reward': 0.0045, 'rrRatio': 1.8, 'outcome': 'Target Hit', 'result': 'Win'},
-            {'id': 5, 'date': '2024-01-11', 'trader': 'Wallace', 'instrument': 'US30', 'entry': 34500.0, 'sl': 34200.0, 'target': 34900.0, 'risk': 300.0, 'reward': 400.0, 'rrRatio': 1.33, 'outcome': 'Open', 'result': 'Open'},
-            {'id': 6, 'date': '2024-01-10', 'trader': 'Max', 'instrument': 'XAUUSD', 'entry': 1835.0, 'sl': 1828.0, 'target': 1845.0, 'risk': 7.0, 'reward': 10.0, 'rrRatio': 1.43, 'outcome': 'Target Hit', 'result': 'Win'},
-            {'id': 7, 'date': '2024-01-09', 'trader': 'Waithaka', 'instrument': 'BTCUSD', 'entry': 42000.0, 'sl': 41500.0, 'target': 43000.0, 'risk': 500.0, 'reward': 1000.0, 'rrRatio': 2.0, 'outcome': 'SL Hit', 'result': 'Loss'},
-            {'id': 8, 'date': '2024-01-08', 'trader': 'Wallace', 'instrument': 'EURUSD', 'entry': 1.0750, 'sl': 1.0720, 'target': 1.0800, 'risk': 0.0030, 'reward': 0.0050, 'rrRatio': 1.67, 'outcome': 'Target Hit', 'result': 'Win'},
-            {'id': 9, 'date': '2024-01-07', 'trader': 'Max', 'instrument': 'USOIL', 'entry': 92.5, 'sl': 91.5, 'target': 94.5, 'risk': 1.0, 'reward': 2.0, 'rrRatio': 2.0, 'outcome': 'SL Hit', 'result': 'Loss'},
-            {'id': 10, 'date': '2024-01-06', 'trader': 'Waithaka', 'instrument': 'US30', 'entry': 34800.0, 'sl': 34600.0, 'target': 35200.0, 'risk': 200.0, 'reward': 400.0, 'rrRatio': 2.0, 'outcome': 'Target Hit', 'result': 'Win'}
         ]
 
 # Header
@@ -65,34 +58,23 @@ st.markdown("""
 # Load data
 trades_data = load_trades_data()
 
-# DATA CLEANING: Fix instrument names in the loaded data
+# DATA CLEANING: Fix instrument names
 cleaned_trades = []
 for trade in trades_data:
-    # Create a copy to avoid modifying the original
     cleaned_trade = trade.copy()
-    
-    # Fix USTECH to US30
-    if cleaned_trade.get('instrument', '').upper() == 'USTECH':
-        cleaned_trade['instrument'] = 'US30'
-    
-    # Fix other instrument names if needed
     instrument = cleaned_trade.get('instrument', '').upper()
-    if instrument == 'NAS100':
-        cleaned_trade['instrument'] = 'NAS100'
-    elif instrument == 'SPX500':
-        cleaned_trade['instrument'] = 'SPX500'
+    
+    if instrument == 'USTECH':
+        cleaned_trade['instrument'] = 'US30'
     
     cleaned_trades.append(cleaned_trade)
 
 df = pd.DataFrame(cleaned_trades)
-
-# Convert date column
 df['date'] = pd.to_datetime(df['date'])
 
 # Sidebar Filters
 st.sidebar.markdown("### 🔧 Analysis Filters")
 
-# Instrument selection
 available_pairs = sorted(df['instrument'].unique())
 selected_pair = st.sidebar.selectbox(
     "🎯 Select Trading Pair",
@@ -100,7 +82,6 @@ selected_pair = st.sidebar.selectbox(
     index=0 if available_pairs else 0
 )
 
-# Trader selection
 available_traders = sorted(df['trader'].unique())
 selected_traders = st.sidebar.multiselect(
     "👥 Select Traders to Compare",
@@ -108,7 +89,6 @@ selected_traders = st.sidebar.multiselect(
     default=available_traders
 )
 
-# Date range selection
 min_date = df['date'].min().date()
 max_date = df['date'].max().date()
 
@@ -142,7 +122,6 @@ if len(date_range) == 2:
 else:
     start_date, end_date = min_date, max_date
 
-# Filter data based on selections
 filtered_df = df[
     (df['instrument'] == selected_pair) &
     (df['trader'].isin(selected_traders)) &
@@ -157,12 +136,23 @@ else:
     # Overview metrics
     st.markdown(f"### 📈 Analysis for: **{selected_pair}**")
     
-    # Quick stats
+    # Calculate stats using result field
     total_trades = len(filtered_df)
-    closed_trades = filtered_df[filtered_df['outcome'].isin(['Target Hit', 'SL Hit'])]
-    win_rate = (len(closed_trades[closed_trades['result'] == 'Win']) / len(closed_trades) * 100) if len(closed_trades) > 0 else 0
+    closed_trades = filtered_df[filtered_df['result'].isin(['Win', 'Loss', 'Breakeven'])]
+    winning_trades = closed_trades[closed_trades['result'] == 'Win']
+    losing_trades = closed_trades[closed_trades['result'] == 'Loss']
     
-    col1, col2, col3, col4 = st.columns(4)
+    # Calculate P&L
+    total_pnl = 0
+    for _, trade in closed_trades.iterrows():
+        if trade['result'] == 'Win':
+            total_pnl += trade['reward']
+        elif trade['result'] == 'Loss':
+            total_pnl -= trade['risk']
+    
+    win_rate = (len(winning_trades) / len(closed_trades) * 100) if len(closed_trades) > 0 else 0
+    
+    col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
         st.metric("Total Trades", total_trades)
     with col2:
@@ -172,6 +162,8 @@ else:
     with col4:
         avg_rr = closed_trades['rrRatio'].mean() if len(closed_trades) > 0 else 0
         st.metric("Avg R:R", f"{avg_rr:.2f}")
+    with col5:
+        st.metric("Total P&L", f"{total_pnl:+.2f}")
 
     # Trader Comparison Table
     st.markdown("### 👥 Trader Performance Comparison")
@@ -179,30 +171,37 @@ else:
     trader_stats = []
     for trader in selected_traders:
         trader_data = filtered_df[filtered_df['trader'] == trader]
-        trader_closed = trader_data[trader_data['outcome'].isin(['Target Hit', 'SL Hit'])]
+        trader_closed = trader_data[trader_data['result'].isin(['Win', 'Loss', 'Breakeven'])]
         trader_wins = trader_closed[trader_closed['result'] == 'Win']
+        trader_losses = trader_closed[trader_closed['result'] == 'Loss']
+        
+        # Calculate P&L for this trader
+        trader_pnl = 0
+        for _, trade in trader_closed.iterrows():
+            if trade['result'] == 'Win':
+                trader_pnl += trade['reward']
+            elif trade['result'] == 'Loss':
+                trader_pnl -= trade['risk']
         
         stats = {
             'Trader': trader,
             'Total Trades': len(trader_data),
             'Closed Trades': len(trader_closed),
             'Wins': len(trader_wins),
-            'Losses': len(trader_closed) - len(trader_wins),
+            'Losses': len(trader_losses),
             'Win Rate %': (len(trader_wins) / len(trader_closed) * 100) if len(trader_closed) > 0 else 0,
             'Avg R:R Ratio': trader_closed['rrRatio'].mean() if len(trader_closed) > 0 else 0,
-            'Total P&L': (trader_wins['reward'].sum() - 
-                         trader_closed[trader_closed['result'] == 'Loss']['risk'].sum()) if len(trader_closed) > 0 else 0
+            'Total P&L': trader_pnl
         }
         trader_stats.append(stats)
     
     comparison_df = pd.DataFrame(trader_stats)
     
-    # Display comparison table - FIXED: Remove problematic styling
+    # Display comparison table
     if not comparison_df.empty:
-        # Simple display without styling that requires matplotlib
         st.dataframe(comparison_df, use_container_width=True)
         
-        # Add visual indicators using HTML/CSS instead
+        # Visual performance summary
         st.markdown("#### 📊 Performance Summary")
         for _, trader in comparison_df.iterrows():
             win_rate = trader['Win Rate %']
@@ -220,7 +219,7 @@ else:
                     </div>
                     <div style="text-align: right;">
                         <strong style="color: {win_color};">Win Rate: {win_rate:.1f}%</strong>
-                        <div style="color: {pnl_color};">P&L: {trader['Total P&L']:+.2f}</div>
+                        <div style="color: {pnl_color}; font-size: 1.1rem; font-weight: bold;">P&L: {trader['Total P&L']:+.2f}</div>
                     </div>
                 </div>
                 <div style="background: #e2e8f0; border-radius: 10px; height: 8px; margin-top: 0.5rem;">
@@ -239,12 +238,36 @@ else:
         weekly_data = closed_trades.copy()
         weekly_data['week'] = weekly_data['date'].dt.to_period('W').dt.start_time
         
-        weekly_stats = weekly_data.groupby(['week', 'trader']).agg({
-            'result': lambda x: (x == 'Win').mean() * 100,  # Win rate
-            'rrRatio': 'mean',
-            'id': 'count'  # Trade count
-        }).reset_index()
-        weekly_stats.rename(columns={'result': 'win_rate', 'id': 'trade_count'}, inplace=True)
+        # Calculate weekly stats with P&L
+        weekly_stats_list = []
+        for week in weekly_data['week'].unique():
+            week_trades = weekly_data[weekly_data['week'] == week]
+            
+            for trader in selected_traders:
+                trader_week = week_trades[week_trades['trader'] == trader]
+                
+                if len(trader_week) > 0:
+                    wins = len(trader_week[trader_week['result'] == 'Win'])
+                    total = len(trader_week)
+                    
+                    # Calculate P&L for this week
+                    week_pnl = 0
+                    for _, trade in trader_week.iterrows():
+                        if trade['result'] == 'Win':
+                            week_pnl += trade['reward']
+                        elif trade['result'] == 'Loss':
+                            week_pnl -= trade['risk']
+                    
+                    weekly_stats_list.append({
+                        'week': week,
+                        'trader': trader,
+                        'win_rate': (wins / total * 100) if total > 0 else 0,
+                        'rrRatio': trader_week['rrRatio'].mean(),
+                        'trade_count': total,
+                        'pnl': week_pnl
+                    })
+        
+        weekly_stats = pd.DataFrame(weekly_stats_list)
         
         # Chart 1: Win Rate Over Time
         st.markdown("#### 📊 Win Rate Trend")
@@ -255,7 +278,16 @@ else:
         fig_winrate.update_layout(height=400)
         st.plotly_chart(fig_winrate, use_container_width=True)
         
-        # Chart 2: R:R Ratio Over Time
+        # Chart 2: P&L Over Time
+        st.markdown("#### 💰 Profit & Loss Trend")
+        fig_pnl = px.line(weekly_stats, x='week', y='pnl', color='trader',
+                         title=f'P&L Over Time - {selected_pair}',
+                         labels={'pnl': 'P&L', 'week': 'Week'},
+                         markers=True)
+        fig_pnl.update_layout(height=400)
+        st.plotly_chart(fig_pnl, use_container_width=True)
+        
+        # Chart 3: R:R Ratio Over Time
         st.markdown("#### ⚖️ Risk-Reward Ratio Trend")
         fig_rr = px.line(weekly_stats, x='week', y='rrRatio', color='trader',
                         title=f'Risk-Reward Ratio Over Time - {selected_pair}',
@@ -264,7 +296,7 @@ else:
         fig_rr.update_layout(height=400)
         st.plotly_chart(fig_rr, use_container_width=True)
         
-        # Chart 3: Trade Frequency
+        # Chart 4: Trade Frequency
         st.markdown("#### 📈 Trading Activity")
         fig_activity = px.bar(weekly_stats, x='week', y='trade_count', color='trader',
                              title=f'Trading Activity - {selected_pair}',
@@ -275,22 +307,20 @@ else:
     # Individual Trade Analysis
     st.markdown("### 🔍 Individual Trade Analysis")
     
-    # Add some filters for the detailed view
     detail_col1, detail_col2 = st.columns(2)
     with detail_col1:
-        show_outcomes = st.multiselect("Filter by Outcome", 
-                                     options=['Open', 'Target Hit', 'SL Hit'],
-                                     default=['Open', 'Target Hit', 'SL Hit'])
+        show_results = st.multiselect("Filter by Result", 
+                                     options=['Open', 'Win', 'Loss', 'Breakeven'],
+                                     default=['Open', 'Win', 'Loss', 'Breakeven'])
     with detail_col2:
         sort_by = st.selectbox("Sort Trades By", 
                              options=['date', 'rrRatio', 'risk'], 
                              format_func=lambda x: x.replace('rrRatio', 'R:R Ratio').title())
 
     # Filter detailed view
-    detailed_view = filtered_df[filtered_df['outcome'].isin(show_outcomes)].sort_values(sort_by, ascending=False)
+    detailed_view = filtered_df[filtered_df['result'].isin(show_results)].sort_values(sort_by, ascending=False)
     
     if len(detailed_view) > 0:
-        # Display detailed trades
         display_columns = ['date', 'trader', 'instrument', 'entry', 'sl', 'target', 
                          'rrRatio', 'outcome', 'result']
         st.dataframe(detailed_view[display_columns], use_container_width=True)
@@ -300,18 +330,17 @@ else:
         dist_col1, dist_col2 = st.columns(2)
         
         with dist_col1:
-            # By trader
             trader_dist = detailed_view['trader'].value_counts()
             fig_trader = px.pie(values=trader_dist.values, names=trader_dist.index,
                                title='Trade Distribution by Trader')
             st.plotly_chart(fig_trader, use_container_width=True)
         
         with dist_col2:
-            # By outcome
-            outcome_dist = detailed_view['outcome'].value_counts()
-            fig_outcome = px.pie(values=outcome_dist.values, names=outcome_dist.index,
-                                title='Trade Distribution by Outcome')
-            st.plotly_chart(fig_outcome, use_container_width=True)
+            result_dist = detailed_view['result'].value_counts()
+            fig_result = px.pie(values=result_dist.values, names=result_dist.index,
+                                title='Trade Distribution by Result',
+                                color_discrete_map={'Win': '#10b981', 'Loss': '#ef4444', 'Open': '#3b82f6', 'Breakeven': '#6b7280'})
+            st.plotly_chart(fig_result, use_container_width=True)
     else:
         st.info("No trades match the detailed view filters")
 
@@ -323,13 +352,12 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Sidebar info
 st.sidebar.markdown("---")
 st.sidebar.markdown("""
 **📊 How to use this page:**
 
 1. **Select a trading pair** to analyze
-2. **Choose 1-3 traders** to compare  
+2. **Choose traders** to compare  
 3. **Pick a time period** for analysis
 4. **View performance metrics** and trends
 
