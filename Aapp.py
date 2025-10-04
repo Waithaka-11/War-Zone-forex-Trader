@@ -332,9 +332,9 @@ def check_and_update_trades():
     
     updates_made = 0
     
-    for trade in st.session_state.trades:
+    for i, trade in enumerate(st.session_state.trades):
         # Skip already closed trades
-        if trade.get("outcome") in ("Target Hit", "SL Hit"):
+        if trade.get("outcome") in ("Target Hit", "SL Hit", "Manual Close"):
             continue
         
         symbol = trade.get("instrument", "")
@@ -361,37 +361,34 @@ def check_and_update_trades():
         if is_long_trade:
             # Long trade
             if target_price > 0 and live_price >= target_price:
-                trade["outcome"] = "Target Hit"
-                trade["result"] = "Win"
+                st.session_state.trades[i]["outcome"] = "Target Hit"
+                st.session_state.trades[i]["result"] = "Win"
                 trade_updated = True
             elif sl_price > 0 and live_price <= sl_price:
-                trade["outcome"] = "SL Hit"
-                trade["result"] = "Loss"
+                st.session_state.trades[i]["outcome"] = "SL Hit"
+                st.session_state.trades[i]["result"] = "Loss"
                 trade_updated = True
         else:
             # Short trade
             if target_price > 0 and live_price <= target_price:
-                trade["outcome"] = "Target Hit"
-                trade["result"] = "Win"
+                st.session_state.trades[i]["outcome"] = "Target Hit"
+                st.session_state.trades[i]["result"] = "Win"
                 trade_updated = True
             elif sl_price > 0 and live_price >= sl_price:
-                trade["outcome"] = "SL Hit"
-                trade["result"] = "Loss"
+                st.session_state.trades[i]["outcome"] = "SL Hit"
+                st.session_state.trades[i]["result"] = "Loss"
                 trade_updated = True
         
         if trade_updated:
             updates_made += 1
-            # Try to update in sheets if connected
+            # Update in sheets immediately
             if st.session_state.sheets_connected:
-                try:
-                    update_trade_in_sheets(trade)
-                except:
-                    pass
+                update_trade_in_sheets(st.session_state.trades[i])
     
     return updates_made
 
-def close_trade(trade_id):
-    """Close a trade manually - sets outcome to 'Manual Close'"""
+def close_trade(trade_id, close_type="manual", current_price=None):
+    """Close a trade and calculate P&L based on current price or manual selection"""
     try:
         # Force complete data refresh
         st.cache_data.clear()
@@ -402,9 +399,35 @@ def close_trade(trade_id):
         trade_updated = False
         for i, trade in enumerate(st.session_state.trades):
             if trade['id'] == trade_id:
-                # Always set to Manual Close for manual closures
-                st.session_state.trades[i]['outcome'] = 'Manual Close'
-                st.session_state.trades[i]['result'] = 'Closed'  # Neutral result
+                if close_type == "manual" and current_price is not None:
+                    # Calculate actual P&L based on current price
+                    entry = trade['entry']
+                    sl = trade['sl']
+                    target = trade['target']
+                    
+                    is_long = target > entry
+                    
+                    if is_long:
+                        # Long trade
+                        pnl = current_price - entry
+                    else:
+                        # Short trade
+                        pnl = entry - current_price
+                    
+                    # Determine if win or loss
+                    if pnl > 0:
+                        st.session_state.trades[i]['outcome'] = 'Manual Close'
+                        st.session_state.trades[i]['result'] = 'Win'
+                        st.session_state.trades[i]['reward'] = abs(pnl)  # Store actual profit
+                    else:
+                        st.session_state.trades[i]['outcome'] = 'Manual Close'
+                        st.session_state.trades[i]['result'] = 'Loss'
+                        st.session_state.trades[i]['risk'] = abs(pnl)  # Store actual loss
+                else:
+                    # Neutral close
+                    st.session_state.trades[i]['outcome'] = 'Manual Close'
+                    st.session_state.trades[i]['result'] = 'Breakeven'
+                
                 trade_updated = True
                 
                 # Update Google Sheets
@@ -413,7 +436,7 @@ def close_trade(trade_id):
                 break
         
         if trade_updated:
-            st.success(f"✅ Trade #{trade_id} manually closed!")
+            st.success(f"✅ Trade #{trade_id} closed!")
             return True
         else:
             st.error(f"❌ Trade #{trade_id} not found")
@@ -421,35 +444,6 @@ def close_trade(trade_id):
             
     except Exception as e:
         st.error(f"❌ Error: {str(e)}")
-        return False
-
-def adjust_trade_sl_tp(trade_id, new_sl, new_tp):
-    """Adjust Stop Loss and Take Profit for a trade"""
-    try:
-        # Validate inputs
-        if new_sl <= 0 or new_tp <= 0:
-            st.error("SL and TP must be positive values")
-            return False
-            
-        # Find the trade in session state
-        for trade in st.session_state.trades:
-            if trade['id'] == trade_id:
-                # Update the trade values
-                trade['sl'] = float(new_sl)
-                trade['target'] = float(new_tp)
-                trade['risk'] = abs(trade['entry'] - trade['sl'])
-                trade['reward'] = abs(trade['target'] - trade['entry'])
-                trade['rrRatio'] = trade['reward'] / trade['risk'] if trade['risk'] > 0 else 0
-                
-                # Update in Google Sheets if connected
-                if st.session_state.sheets_connected:
-                    return update_trade_in_sheets(trade)
-                else:
-                    return True  # Success for local mode
-        
-        return False  # Trade not found
-    except Exception as e:
-        st.error(f"Error adjusting trade: {e}")
         return False
 
 # Page configuration
@@ -1019,16 +1013,67 @@ if st.session_state.trades:
         </div>
         """, unsafe_allow_html=True)
         
-        # Add buttons for open trades
+# Add buttons for open trades
         if show_buttons:
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button(f"❌ Close Trade #{trade['id']}", key=f"close_{trade['id']}", use_container_width=True):
-                    if close_trade(trade['id']):
+            # Check if adjustment UI should be shown for this trade
+            if st.session_state.get(f"adjust_{trade['id']}", False):
+                st.markdown("---")
+                st.markdown("**Adjust Stop Loss & Take Profit**")
+                
+                adj_col1, adj_col2, adj_col3 = st.columns([1, 1, 1])
+                
+                with adj_col1:
+                    new_sl = st.number_input(
+                        "New Stop Loss", 
+                        value=float(trade['sl']),
+                        min_value=0.0,
+                        format="%.5f",
+                        key=f"new_sl_{trade['id']}"
+                    )
+                
+                with adj_col2:
+                    new_tp = st.number_input(
+                        "New Take Profit", 
+                        value=float(trade['target']),
+                        min_value=0.0,
+                        format="%.5f",
+                        key=f"new_tp_{trade['id']}"
+                    )
+                
+                with adj_col3:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button(f"💾 Save Changes", key=f"save_adj_{trade['id']}", use_container_width=True):
+                        if adjust_trade_sl_tp(trade['id'], new_sl, new_tp):
+                            st.success("✅ Trade adjusted!")
+                            st.session_state[f"adjust_{trade['id']}"] = False
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error("❌ Failed to adjust trade")
+                    
+                    if st.button(f"❌ Cancel", key=f"cancel_adj_{trade['id']}", use_container_width=True):
+                        st.session_state[f"adjust_{trade['id']}"] = False
                         st.rerun()
-            with col2:
-                if st.button(f"⚙️ Adjust SL/TP #{trade['id']}", key=f"adjust_{trade['id']}", use_container_width=True):
-                    st.session_state[f"adjust_{trade['id']}"] = True
+            else:
+                # Normal buttons
+                btn_col1, btn_col2 = st.columns(2)
+                
+                with btn_col1:
+                    if st.button(f"🔴 Close Trade #{trade['id']}", key=f"close_{trade['id']}", use_container_width=True):
+                        # Get current price for P&L calculation
+                        current_price = get_live_price(trade['instrument'])
+                        if current_price:
+                            if close_trade(trade['id'], "manual", current_price):
+                                st.rerun()
+                        else:
+                            # Close as breakeven if can't get price
+                            if close_trade(trade['id'], "manual", None):
+                                st.rerun()
+                
+                with btn_col2:
+                    if st.button(f"⚙️ Adjust SL/TP", key=f"adjust_{trade['id']}", use_container_width=True):
+                        st.session_state[f"adjust_{trade['id']}"] = True
+                        st.rerun()
 
 else:
     st.info("No trades recorded yet.")
@@ -1141,6 +1186,7 @@ st.markdown("""
     Real-time monitoring • Risk management • Performance tracking
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
